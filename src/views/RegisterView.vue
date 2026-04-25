@@ -358,14 +358,15 @@ const fetchSecurityQuestions = async () => {
  */
 const fetchKey = async () => {
   try {
+    console.log('注册页面：开始获取RSA公钥...')
     const keyData = await fetchRSAKey()
     rsaPublicKey.value = keyData.publicKey
     sessionId.value = keyData.sessionId
-    console.log('获取到公钥:', rsaPublicKey.value)
-    console.log('会话ID:', sessionId.value)
+    console.log('注册页面：获取到公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    console.log('注册页面：会话ID:', sessionId.value)
   } catch (error) {
-    console.error('获取公钥失败:', error)
-    alert('系统初始化失败，请刷新页面重试')
+    console.error('注册页面：获取公钥失败:', error)
+    alert('系统初始化失败：无法获取RSA公钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
   }
 }
 
