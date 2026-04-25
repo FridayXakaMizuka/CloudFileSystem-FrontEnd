@@ -49,7 +49,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import JSEncrypt from 'jsencrypt'
+import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
 
 const router = useRouter()
 const isLoggedIn = ref(false)
@@ -66,6 +66,9 @@ const isLoading = ref(false)
 const rsaPublicKey = ref('')
 const sessionId = ref('')
 
+/**
+ * 获取随机背景图片
+ */
 const getRandomImage = () => {
   imageLoaded.value = false
   const timestamp = new Date().getTime()
@@ -74,20 +77,11 @@ const getRandomImage = () => {
   randomImage.value = `https://picsum.photos/${width}/${height}?random=${timestamp}`
 }
 
+/**
+ * 图片加载完成回调
+ */
 const onImageLoad = () => {
   imageLoaded.value = true
-}
-
-/**
- * 使用RSA加密密码
- * @param {string} password - 原始密码
- * @param {string} publicKey - RSA公钥
- * @returns {string} 加密后的密码
- */
-const encryptPassword = (password, publicKey) => {
-  const encrypt = new JSEncrypt()
-  encrypt.setPublicKey(publicKey)
-  return encrypt.encrypt(password)
 }
 
 /**
@@ -177,29 +171,23 @@ onMounted(() => {
   }
   
   // 获取RSA公钥和会话ID
-  fetchRSAKey()
+  fetchKey()
 })
 
 /**
  * 获取RSA公钥和会话ID
  */
-const fetchRSAKey = async () => {
+const fetchKey = async () => {
   try {
-    const response = await fetch('http://localhost:8835/api/auth/rsa-key')
-    const data = await response.json()
-    
-    if (response.ok && data.publicKey && data.sessionId) {
-      rsaPublicKey.value = data.publicKey
-      sessionId.value = data.sessionId
-      console.log('获取到公钥:', rsaPublicKey.value)
-      console.log('会话ID:', sessionId.value)
-    } else {
-      console.error('获取公钥失败:', data.message)
-      alert('系统初始化失败，请刷新页面重试')
-    }
+    console.log('登录页面：开始获取RSA公钥...')
+    const keyData = await fetchRSAKey()
+    rsaPublicKey.value = keyData.publicKey
+    sessionId.value = keyData.sessionId
+    console.log('登录页面：获取到公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    console.log('登录页面：会话ID:', sessionId.value)
   } catch (error) {
-    console.error('获取公钥请求失败:', error)
-    alert('网络连接失败，请检查后端服务是否启动')
+    console.error('登录页面：获取公钥失败:', error)
+    alert('系统初始化失败：无法获取RSA公钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
   }
 }
 

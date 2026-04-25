@@ -116,7 +116,6 @@
             />
             <p v-if="passwordError" class="error-message">{{ passwordError }}</p>
             <p v-if="passwordTooShortOrTooLong && passwordBlurred && confirmPasswordBlurred" class="error-message">{{ passwordTooShortOrTooLong }}</p>
-            <p v-if="passwordHasSpecialCharacters" class="error-message">{{ passwordHasSpecialCharacters }}</p>
 
           </div>
 
@@ -128,11 +127,9 @@
             </label>
             <select id="securityQuestion" v-model="registerForm.securityQuestion" required>
               <option value="" disabled>请选择安全问题</option>
-              <option value="pet">您第一只宠物的名字是什么？</option>
-              <option value="school">您的小学名称是什么？</option>
-              <option value="city">您出生的城市是哪里？</option>
-              <option value="mother">您母亲的姓名是什么？</option>
-              <option value="book">您最喜欢的书是什么？</option>
+              <option v-for="question in securityQuestions" :key="question.id" :value="question.id">
+                {{ question.questionText }}
+              </option>
             </select>
           </div>
 
@@ -166,6 +163,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
 
 // 路由实例
 const router = useRouter()
@@ -187,6 +185,13 @@ const isLoading = ref(false)
 // 背景图片
 const randomImage = ref('')
 const imageLoaded = ref(false)
+
+// 安全问题列表
+const securityQuestions = ref([])
+
+// RSA公钥和会话ID
+const rsaPublicKey = ref('')
+const sessionId = ref('')
 
 // 密码框失焦状态标记
 const passwordBlurred = ref(false)           // 密码框是否已失焦
@@ -281,17 +286,6 @@ const passwordTooShortOrTooLong = computed(() => {
 })
 
 /**
- * 计算属性：验证密码是否包含特殊字符
- */
-const passwordHasSpecialCharacters = computed(() => {
-  const specialCharacters = /[^a-zA-Z0-9_]/
-  if (specialCharacters.test(registerForm.value.password)) {
-    return '密码不能包含特殊字符'
-  }
-  return ''
-})
-
-/**
  * 计算属性：验证邮箱格式
  */
 const emailError = computed(() => {
@@ -334,10 +328,46 @@ const isFormValid = computed(() => {
       registerForm.value.password === registerForm.value.confirmPassword &&
       registerForm.value.password.length >= 6 &&
       registerForm.value.password.length <= 14 &&
-      !passwordHasSpecialCharacters.value &&
       emailRegex.test(registerForm.value.email) &&
       phoneRegex.test(registerForm.value.phone)
 })
+
+/**
+ * 获取安全问题列表
+ */
+const fetchSecurityQuestions = async () => {
+  try {
+    const response = await fetch('http://localhost:8835/api/auth/security-questions')
+    const data = await response.json()
+    
+    if (data.success && data.code === 200) {
+      console.log('获取安全问题成功:', data.questions)
+      securityQuestions.value = data.questions || []
+    } else {
+      console.error('获取安全问题失败:', data.message)
+      alert('获取安全问题失败，请刷新页面重试')
+    }
+  } catch (error) {
+    console.error('请求安全问题接口出错:', error)
+    alert('网络错误，无法获取安全问题')
+  }
+}
+
+/**
+ * 获取RSA公钥和会话ID
+ */
+const fetchKey = async () => {
+  try {
+    const keyData = await fetchRSAKey()
+    rsaPublicKey.value = keyData.publicKey
+    sessionId.value = keyData.sessionId
+    console.log('获取到公钥:', rsaPublicKey.value)
+    console.log('会话ID:', sessionId.value)
+  } catch (error) {
+    console.error('获取公钥失败:', error)
+    alert('系统初始化失败，请刷新页面重试')
+  }
+}
 
 /**
  * 处理返回登录页面
@@ -355,44 +385,79 @@ const handleRegister = async () => {
     return
   }
 
+  // 检查是否已获取公钥和会话ID
+  if (!rsaPublicKey.value || !sessionId.value) {
+    alert('系统初始化未完成，请稍后重试')
+    return
+  }
+
   isLoading.value = true
 
-  // 模拟注册请求
-  setTimeout(() => {
-    // 保存用户信息到 localStorage（实际项目中应该调用后端 API）
-    const users = JSON.parse(localStorage.getItem('users') || '[]')
+  try {
+    // 使用RSA加密密码
+    const encryptedPassword = encryptPassword(registerForm.value.password, rsaPublicKey.value)
 
-    // 检查昵称是否已存在
-    if (users.some(u => u.nickname === registerForm.value.nickname)) {
-      alert('该昵称已被使用')
-      isLoading.value = false
-      return
+    // 构造请求数据
+    const registerData = {
+      sessionId: sessionId.value,
+      data: [
+        {
+          nickname: registerForm.value.nickname,
+          email: registerForm.value.email,
+          phone: registerForm.value.phone,
+          encryptedPassword: encryptedPassword,
+          securityQuestion: parseInt(registerForm.value.securityQuestion),
+          securityAnswer: registerForm.value.securityAnswer
+        }
+      ]
     }
 
-    // 保存新用户
-    users.push({
-      nickname: registerForm.value.nickname,
-      email: registerForm.value.email,
-      phone: registerForm.value.phone,
-      password: registerForm.value.password,
-      securityQuestion: registerForm.value.securityQuestion,
-      securityAnswer: registerForm.value.securityAnswer,
-      registerTime: new Date().toISOString()
+    console.log('发送注册请求:', registerData)
+
+    // 发送POST请求到后端
+    const response = await fetch('http://localhost:8835/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(registerData)
     })
 
-    localStorage.setItem('users', JSON.stringify(users))
+    const result = await response.json()
+    console.log('注册响应:', result)
 
+    // 按照后端响应格式处理：code=200 且 success=true 表示成功
+    if (response.ok && result.code === 200 && result.success === true) {
+      // 注册成功
+      const userData = result.data && result.data[0]
+      
+      if (userData) {
+        // 显示用户信息
+        const message = `注册成功！\n\n用户ID: ${userData.id}\n用户名: ${userData.nickname}\n密码: ${registerForm.value.password}`
+        alert(message)
+      } else {
+        alert(result.message || '注册成功！')
+      }
+
+      // 跳转到登录页面
+      router.push('/login')
+    } else {
+      // 注册失败，显示错误信息
+      alert(result.message || '注册失败，请稍后重试')
+    }
+  } catch (error) {
+    console.error('注册请求失败:', error)
+    alert('网络错误，请稍后重试')
+  } finally {
     isLoading.value = false
-    alert('注册成功！请登录')
-
-    // 跳转到登录页面
-    router.push('/login')
-  }, 1000)
+  }
 }
 
-// 组件挂载时获取背景图片
+// 组件挂载时获取背景图片、安全问题列表和RSA公钥
 onMounted(() => {
   getRandomImage()
+  fetchSecurityQuestions()
+  fetchKey()
 })
 </script>
 
