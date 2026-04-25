@@ -1,0 +1,646 @@
+<template>
+  <!-- 注册页面主容器 -->
+  <div class="register-container">
+    <!-- 背景图片层 -->
+    <div class="background-layer">
+      <img :src="randomImage" alt="Background" class="bg-image" @load="onImageLoad" />
+      <div v-if="!imageLoaded" class="image-loading">加载中...</div>
+    </div>
+
+    <!-- 顶部标题栏 -->
+    <header class="header">
+      <div class="header-left">
+        <h1 class="title">注册</h1>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-back" @click="handleBackToLogin">
+          <span class="icon">←</span>
+          返回登录
+        </button>
+      </div>
+    </header>
+
+    <!-- 注册表单区域 -->
+    <main class="main-content">
+      <div class="form-wrapper">
+        <form @submit.prevent="handleRegister" class="register-form">
+          <!-- 昵称输入 -->
+          <div class="form-group">
+            <label for="nickname">
+              <span class="label-icon">👤</span>
+              昵称
+            </label>
+            <input
+                type="text"
+                id="nickname"
+                v-model="registerForm.nickname"
+                placeholder="请输入昵称"
+                required
+                autocomplete="nickname"
+            />
+          </div>
+
+          <!-- 邮箱输入 -->
+          <div class="form-group">
+            <label for="email">
+              <span class="label-icon">📧</span>
+              邮箱地址
+            </label>
+            <input
+                type="email"
+                id="email"
+                v-model="registerForm.email"
+                placeholder="请输入邮箱地址"
+                required
+                autocomplete="email"
+                @blur="handleEmailBlur"
+            />
+            <p v-if="emailError" class="error-message">{{ emailError }}</p>
+          </div>
+
+          <!-- 手机号输入 -->
+          <div class="form-group">
+            <label for="phone">
+              <span class="label-icon">📱</span>
+              手机号
+            </label>
+            <input
+                type="tel"
+                id="phone"
+                v-model="registerForm.phone"
+                placeholder="请输入手机号"
+                required
+                autocomplete="tel"
+                maxlength="11"
+                @blur="handlePhoneBlur"
+            />
+            <p v-if="phoneError" class="error-message">{{ phoneError }}</p>
+          </div>
+
+          <!-- 密码输入 -->
+          <div class="form-group">
+            <label for="password">
+              <span class="label-icon">🔒</span>
+              密码
+            </label>
+            <input
+                type="password"
+                id="password"
+                v-model="registerForm.password"
+                placeholder="请输入密码（6-14位，仅由数字、字母和下划线构成）"
+                required
+                minlength="6"
+                maxlength="14"
+                autocomplete="new-password"
+                @blur="handlePasswordBlur"
+                @focus="handlePasswordFocus"
+            />
+          </div>
+
+
+          <!-- 确认密码 -->
+          <div class="form-group">
+            <label for="confirmPassword">
+              <span class="label-icon">🔒</span>
+              确认密码
+            </label>
+            <input
+                type="password"
+                id="confirmPassword"
+                v-model="registerForm.confirmPassword"
+                placeholder="请再次输入密码"
+                required
+                autocomplete="new-password"
+                @blur="handleConfirmPasswordBlur"
+                @focus="handleConfirmPasswordFocus"
+            />
+            <p v-if="passwordError" class="error-message">{{ passwordError }}</p>
+            <p v-if="passwordTooShortOrTooLong && passwordBlurred && confirmPasswordBlurred" class="error-message">{{ passwordTooShortOrTooLong }}</p>
+            <p v-if="passwordHasSpecialCharacters" class="error-message">{{ passwordHasSpecialCharacters }}</p>
+
+          </div>
+
+          <!-- 安全问题 -->
+          <div class="form-group">
+            <label for="securityQuestion">
+              <span class="label-icon">❓</span>
+              安全问题
+            </label>
+            <select id="securityQuestion" v-model="registerForm.securityQuestion" required>
+              <option value="" disabled>请选择安全问题</option>
+              <option value="pet">您第一只宠物的名字是什么？</option>
+              <option value="school">您的小学名称是什么？</option>
+              <option value="city">您出生的城市是哪里？</option>
+              <option value="mother">您母亲的姓名是什么？</option>
+              <option value="book">您最喜欢的书是什么？</option>
+            </select>
+          </div>
+
+          <!-- 安全问题答案 -->
+          <div class="form-group">
+            <label for="securityAnswer">
+              <span class="label-icon">✏️</span>
+              安全问题答案
+            </label>
+            <input
+                type="text"
+                id="securityAnswer"
+                v-model="registerForm.securityAnswer"
+                placeholder="请输入安全问题答案"
+                required
+            />
+          </div>
+
+          <!-- 确认注册按钮 -->
+          <div class="button-group">
+            <button type="submit" class="btn btn-submit" :disabled="isLoading || !isFormValid">
+              {{ isLoading ? '注册中...' : '确认注册' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+
+// 路由实例
+const router = useRouter()
+
+// 注册表单数据
+const registerForm = ref({
+  nickname: '',
+  email: '',
+  phone: '',
+  password: '',
+  confirmPassword: '',
+  securityQuestion: '',
+  securityAnswer: ''
+})
+
+// 加载状态
+const isLoading = ref(false)
+
+// 背景图片
+const randomImage = ref('')
+const imageLoaded = ref(false)
+
+// 密码框失焦状态标记
+const passwordBlurred = ref(false)           // 密码框是否已失焦
+const confirmPasswordBlurred = ref(false)    // 确认密码框是否已失焦
+
+// 邮箱和手机号失焦状态标记
+const emailBlurred = ref(false)
+const phoneBlurred = ref(false)
+
+/**
+ * 密码框失焦处理
+ */
+const handlePasswordBlur = () => {
+  passwordBlurred.value = true  // 标记为已失焦
+}
+
+/**
+ * 确认密码框失焦处理
+ */
+const handleConfirmPasswordBlur = () => {
+  confirmPasswordBlurred.value = true  // 标记为已失焦
+}
+
+/**
+ * 密码框聚焦处理
+ */
+const handlePasswordFocus = () => {
+  // 可选：聚焦时隐藏错误提示
+  passwordBlurred.value = false
+}
+
+/**
+ * 确认密码框聚焦处理
+ */
+const handleConfirmPasswordFocus = () => {
+  // 可选：聚焦时隐藏错误提示
+  confirmPasswordBlurred.value = false
+}
+
+/**
+ * 邮箱失焦处理
+ */
+const handleEmailBlur = () => {
+  emailBlurred.value = true
+}
+
+/**
+ * 手机号失焦处理
+ */
+const handlePhoneBlur = () => {
+  phoneBlurred.value = true
+}
+
+/**
+ * 获取随机背景图片
+ */
+const getRandomImage = () => {
+  imageLoaded.value = false
+  const timestamp = new Date().getTime()
+  const width = 1920
+  const height = 1080
+  randomImage.value = `https://picsum.photos/${width}/${height}?random=${timestamp}`
+}
+
+/**
+ * 图片加载完成回调
+ */
+const onImageLoad = () => {
+  imageLoaded.value = true
+}
+
+/**
+ * 计算属性：验证两次密码是否一致
+ */
+const passwordError = computed(() => {
+  if (registerForm.value.confirmPassword &&
+      registerForm.value.password !== registerForm.value.confirmPassword) {
+    return '两次输入的密码不一致'
+  }
+  return ''
+})
+
+/**
+ * 计算属性：验证密码长度是否符合要求
+ */
+const passwordTooShortOrTooLong = computed(() => {
+  if (registerForm.value.password.length < 6 ||
+      registerForm.value.password.length > 14) {
+    return '密码长度应在6-14位之间'
+  }
+  return ''
+})
+
+/**
+ * 计算属性：验证密码是否包含特殊字符
+ */
+const passwordHasSpecialCharacters = computed(() => {
+  const specialCharacters = /[^a-zA-Z0-9_]/
+  if (specialCharacters.test(registerForm.value.password)) {
+    return '密码不能包含特殊字符'
+  }
+  return ''
+})
+
+/**
+ * 计算属性：验证邮箱格式
+ */
+const emailError = computed(() => {
+  if (emailBlurred.value && registerForm.value.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(registerForm.value.email)) {
+      return '请输入有效的邮箱地址'
+    }
+  }
+  return ''
+})
+
+/**
+ * 计算属性：验证手机号格式
+ */
+const phoneError = computed(() => {
+  if (phoneBlurred.value && registerForm.value.phone) {
+    const phoneRegex = /^1[3-9]\d{9}$/
+    if (!phoneRegex.test(registerForm.value.phone)) {
+      return '请输入有效的11位手机号'
+    }
+  }
+  return ''
+})
+
+/**
+ * 计算属性：表单是否有效
+ */
+const isFormValid = computed(() => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const phoneRegex = /^1[3-9]\d{9}$/
+  
+  return registerForm.value.nickname &&
+      registerForm.value.email &&
+      registerForm.value.phone &&
+      registerForm.value.password &&
+      registerForm.value.confirmPassword &&
+      registerForm.value.securityQuestion &&
+      registerForm.value.securityAnswer &&
+      registerForm.value.password === registerForm.value.confirmPassword &&
+      registerForm.value.password.length >= 6 &&
+      registerForm.value.password.length <= 14 &&
+      !passwordHasSpecialCharacters.value &&
+      emailRegex.test(registerForm.value.email) &&
+      phoneRegex.test(registerForm.value.phone)
+})
+
+/**
+ * 处理返回登录页面
+ */
+const handleBackToLogin = () => {
+  router.push('/login')
+}
+
+/**
+ * 处理注册提交
+ */
+const handleRegister = async () => {
+  if (!isFormValid.value) {
+    alert('请填写完整的注册信息')
+    return
+  }
+
+  isLoading.value = true
+
+  // 模拟注册请求
+  setTimeout(() => {
+    // 保存用户信息到 localStorage（实际项目中应该调用后端 API）
+    const users = JSON.parse(localStorage.getItem('users') || '[]')
+
+    // 检查昵称是否已存在
+    if (users.some(u => u.nickname === registerForm.value.nickname)) {
+      alert('该昵称已被使用')
+      isLoading.value = false
+      return
+    }
+
+    // 保存新用户
+    users.push({
+      nickname: registerForm.value.nickname,
+      email: registerForm.value.email,
+      phone: registerForm.value.phone,
+      password: registerForm.value.password,
+      securityQuestion: registerForm.value.securityQuestion,
+      securityAnswer: registerForm.value.securityAnswer,
+      registerTime: new Date().toISOString()
+    })
+
+    localStorage.setItem('users', JSON.stringify(users))
+
+    isLoading.value = false
+    alert('注册成功！请登录')
+
+    // 跳转到登录页面
+    router.push('/login')
+  }, 1000)
+}
+
+// 组件挂载时获取背景图片
+onMounted(() => {
+  getRandomImage()
+})
+</script>
+
+<style scoped>
+/* 注册页面主容器：占满整个视口 */
+.register-container {
+  width: 100vw; /* 视口宽度的 100% */
+  height: 100vh; /* 视口高度的 100% */
+  position: relative; /* 相对定位 */
+  overflow: hidden; /* 隐藏溢出内容 */
+}
+
+/* 背景图片层 */
+.background-layer {
+  position: absolute; /* 绝对定位 */
+  top: 0; /* 顶部对齐 */
+  left: 0; /* 左侧对齐 */
+  width: 100%; /* 宽度 100% */
+  height: 100%; /* 高度 100% */
+  z-index: 0; /* 层级为 0（最底层） */
+}
+
+/* 背景图片 */
+.bg-image {
+  width: 100%; /* 宽度 100% */
+  height: 100%; /* 高度 100% */
+  object-fit: cover; /* 保持比例覆盖 */
+  filter: blur(8px); /* 模糊效果 8px */
+  transform: scale(1.1); /* 放大 1.1 倍避免模糊边缘 */
+}
+
+/* 图片加载提示 */
+.image-loading {
+  position: absolute; /* 绝对定位 */
+  top: 50%; /* 垂直居中 */
+  left: 50%; /* 水平居中 */
+  transform: translate(-50%, -50%); /* 精确居中 */
+  color: white; /* 白色文字 */
+  font-size: 1.2rem; /* 字体大小 19.2px */
+  background: rgba(0, 0, 0, 0.5); /* 半透明黑色背景 */
+  padding: 1rem 2rem; /* 上下 16px，左右 32px 内边距 */
+  border-radius: 8px; /* 圆角 8px */
+}
+
+/* 顶部标题栏 */
+.header {
+  position: relative; /* 相对定位 */
+  z-index: 10; /* 层级为 10（在背景之上） */
+  display: flex; /* 启用 Flexbox 布局 */
+  justify-content: space-between; /* 左右两端对齐 */
+  align-items: center; /* 垂直居中对齐 */
+  padding: 1.5rem 3rem; /* 上下 24px，左右 48px 内边距 */
+  background: rgba(255, 255, 255, 0.95); /* 95% 不透明度白色背景 */
+  backdrop-filter: blur(10px); /* 背景模糊效果 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* 轻微阴影 */
+}
+
+/* 标题栏左侧 */
+.header-left {
+  display: flex; /* 启用 Flexbox 布局 */
+  align-items: center; /* 垂直居中对齐 */
+}
+
+/* 页面标题 */
+.title {
+  margin: 0; /* 清除默认外边距 */
+  color: #333; /* 深灰色文字 */
+  font-size: 1.75rem; /* 字体大小 28px */
+  font-weight: 600; /* 字体粗细：半粗体 */
+}
+
+/* 标题栏右侧 */
+.header-right {
+  display: flex; /* 启用 Flexbox 布局 */
+  gap: 1rem; /* 按钮间距 16px */
+}
+
+/* 通用按钮样式 */
+.btn {
+  display: flex; /* 启用 Flexbox 布局 */
+  align-items: center; /* 垂直居中对齐图标和文字 */
+  justify-content: center;
+  gap: 0.5rem; /* 图标和文字间距 8px */
+  padding: 0.625rem 1.25rem; /* 上下 10px，左右 20px 内边距 */
+  border: none; /* 无边框 */
+  border-radius: 8px; /* 圆角 8px */
+  font-size: 0.95rem; /* 字体大小约 15px */
+  font-weight: 500; /* 字体粗细：中等 */
+  cursor: pointer; /* 鼠标悬停时显示手型光标 */
+  transition: all 0.3s ease; /* 所有属性变化时的过渡动画 */
+}
+
+/* 返回登录按钮 */
+.btn-back {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* 紫色渐变背景 */
+  color: white; /* 白色文字 */
+}
+
+/* 返回按钮悬停效果 */
+.btn-back:hover {
+  transform: translateY(-2px); /* 向上移动 2px */
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); /* 紫色阴影 */
+}
+
+/* 按钮图标 */
+.icon {
+  font-size: 1.1rem; /* 图标大小约 17.6px */
+}
+
+/* 主内容区域 */
+.main-content {
+  position: relative; /* 相对定位 */
+  z-index: 10; /* 层级为 10（在背景之上） */
+  height: calc(100vh - 80px); /* 高度为视口高度减去标题栏 */
+  display: flex; /* 启用 Flexbox 布局 */
+  align-items: center; /* 垂直居中对齐 */
+  justify-content: center; /* 水平居中对齐 */
+  padding: 2rem; /* 四周 64px 内边距 */
+  overflow-y: auto; /* 垂直方向可滚动 */
+}
+
+/* 表单包装器 */
+.form-wrapper {
+  width: 100%; /* 宽度 100% */
+  max-width: 500px; /* 最大宽度 500px */
+  margin: auto 0; /* 垂直居中 */
+}
+
+/* 注册表单卡片 */
+.register-form {
+  background: rgba(255, 255, 255, 0.98); /* 98% 不透明度白色背景 */
+  backdrop-filter: blur(10px); /* 背景模糊效果 */
+  padding: 2.5rem; /* 四周 40px 内边距 */
+  border-radius: 16px; /* 圆角 16px */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); /* 深度阴影 */
+}
+
+/* 表单项组 */
+.form-group {
+  margin-bottom: 1.5rem; /* 底部外边距 24px */
+}
+
+/* 表单项标签 */
+.form-group label {
+  display: flex; /* 启用 Flexbox 布局 */
+  align-items: center; /* 垂直居中对齐 */
+  gap: 0.5rem; /* 图标和文字间距 8px */
+  margin-bottom: 0.5rem; /* 底部外边距 8px */
+  color: #555; /* 灰色文字 */
+  font-weight: 500; /* 字体粗细：中等 */
+  font-size: 0.95rem; /* 字体大小约 15px */
+}
+
+/* 标签图标 */
+.label-icon {
+  font-size: 1.1rem; /* 图标大小约 17.6px */
+}
+
+/* 输入框和下拉框 */
+.form-group input,
+.form-group select {
+  width: 100%; /* 宽度 100% */
+  padding: 0.75rem 1rem; /* 上下 12px，左右 16px 内边距 */
+  border: 2px solid #e0e0e0; /* 2px 浅灰色边框 */
+  border-radius: 8px; /* 圆角 8px */
+  font-size: 1rem; /* 字体大小 16px */
+  transition: all 0.3s ease; /* 所有属性变化时的过渡动画 */
+  box-sizing: border-box; /* 盒模型包含边框和内边距 */
+  background: white; /* 白色背景 */
+}
+
+/* 输入框聚焦效果 */
+.form-group input:focus,
+.form-group select:focus {
+  outline: none; /* 移除默认轮廓 */
+  border-color: #667eea; /* 边框变为紫色 */
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); /* 紫色光晕 */
+}
+
+/* 错误提示信息 */
+.error-message {
+  margin: 0.5rem 0 0 0; /* 顶部外边距 8px */
+  color: #ff4d4f; /* 红色文字 */
+  font-size: 0.875rem; /* 字体大小 14px */
+}
+
+/* 按钮组 */
+.button-group {
+  margin-top: 2rem; /* 顶部外边距 32px */
+}
+
+/* 提交按钮 */
+.btn-submit {
+  width: 100%; /* 宽度 100% */
+  padding: 0.875rem 1.5rem; /* 上下 14px，左右 24px 内边距 */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* 紫色渐变背景 */
+  color: white; /* 白色文字 */
+  border: none; /* 无边框 */
+  border-radius: 8px; /* 圆角 8px */
+  font-size: 1rem; /* 字体大小 16px */
+  font-weight: 600; /* 字体粗细：半粗体 */
+  cursor: pointer; /* 鼠标悬停时显示手型光标 */
+  transition: all 0.3s ease; /* 所有属性变化时的过渡动画 */
+}
+
+/* 提交按钮悬停效果 */
+.btn-submit:hover:not(:disabled) {
+  transform: translateY(-2px); /* 向上移动 2px */
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); /* 紫色阴影 */
+}
+
+/* 禁用状态按钮 */
+.btn-submit:disabled {
+  opacity: 0.6; /* 透明度 60% */
+  cursor: not-allowed; /* 禁止光标 */
+}
+
+/* 移动端响应式适配（屏幕宽度 ≤ 768px） */
+@media (max-width: 768px) {
+  /* 缩小标题栏内边距 */
+  .header {
+    padding: 1rem 1.5rem; /* 上下 16px，左右 24px 内边距 */
+  }
+
+  /* 缩小标题文字 */
+  .title {
+    font-size: 1.5rem; /* 字体大小 24px */
+  }
+
+  /* 缩小主内容区内边距 */
+  .main-content {
+    padding: 2rem 1rem; /* 上下32pm 左右 16px 内边距 */
+    height: calc(100vh - 60px); /* 调整高度计算 */
+  }
+
+  /* 缩小表单内边距 */
+  .register-form {
+    padding: 1.5rem; /* 四周 24px 内边距 */
+  }
+
+  /* 表单项间距缩小 */
+  .form-group {
+    margin-bottom: 1rem; /* 底部外边距 16px */
+  }
+
+  /* 按钮组间距缩小 */
+  .button-group {
+    margin-top: 1.5rem; /* 顶部外边距 24px */
+  }
+}
+</style>
