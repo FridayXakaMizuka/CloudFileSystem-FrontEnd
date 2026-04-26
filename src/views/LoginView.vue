@@ -49,7 +49,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
 
 const router = useRouter()
 const isLoggedIn = ref(false)
@@ -158,6 +158,7 @@ const handleLogin = async () => {
  * 处理注册按钮点击，跳转到注册页面
  */
 const handleRegister = () => {
+  console.log('登录页面：跳转到注册页面')
   router.push('/register')
 }
 
@@ -170,24 +171,40 @@ onMounted(() => {
     username.value = savedUsername
   }
   
-  // 获取RSA公钥和会话ID
-  fetchKey()
+  // 从Cookie读取并验证RSA密钥
+  initRSAKey()
 })
 
 /**
- * 获取RSA公钥和会话ID
+ * 初始化RSA密钥（优先从Cookie验证，失败则重新获取）
  */
-const fetchKey = async () => {
+const initRSAKey = async () => {
   try {
-    console.log('登录页面：开始获取RSA公钥...')
-    const keyData = await fetchRSAKey()
-    rsaPublicKey.value = keyData.publicKey
-    sessionId.value = keyData.sessionId
-    console.log('登录页面：获取到公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    console.log('登录页面：开始初始化RSA密钥...')
+    
+    // 1. 尝试从Cookie读取并验证
+    const validatedKey = await getValidatedRSAKey()
+    
+    if (validatedKey) {
+      // 验证成功，使用Cookie中的密钥
+      rsaPublicKey.value = validatedKey.publicKey
+      sessionId.value = validatedKey.sessionId
+      console.log('登录页面：使用Cookie中验证通过的RSA密钥')
+    } else {
+      // 验证失败，重新获取密钥
+      console.log('登录页面：Cookie验证失败，重新获取RSA密钥')
+      const keyData = await fetchRSAKey()
+      rsaPublicKey.value = keyData.publicKey
+      sessionId.value = keyData.sessionId
+      console.log('登录页面：已获取新的RSA密钥')
+    }
+    
+    console.log('登录页面：RSA密钥初始化完成')
+    console.log('登录页面：公钥:', rsaPublicKey.value.substring(0, 50) + '...')
     console.log('登录页面：会话ID:', sessionId.value)
   } catch (error) {
-    console.error('登录页面：获取公钥失败:', error)
-    alert('系统初始化失败：无法获取RSA公钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
+    console.error('登录页面：RSA密钥初始化失败:', error)
+    alert('系统初始化失败：无法获取RSA密钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
   }
 }
 
