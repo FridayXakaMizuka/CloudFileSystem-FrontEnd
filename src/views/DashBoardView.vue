@@ -112,6 +112,10 @@ import {ref, onMounted, computed, onUnmounted} from 'vue'
 import { useRouter } from 'vue-router'
 import BrowseView from './BrowseView.vue'
 import TransferView from './TransferView.vue'
+import { getUserInfo, clearAuthInfo } from '@/utils/auth'
+import { createLogger } from '@/utils/logger'
+
+const logger = createLogger('DashboardView')
 
 const router = useRouter()
 const username = ref('')
@@ -125,15 +129,17 @@ const sidebarOpen = ref(false)
  */
 const handleAvatarClick = () => {
   // 可以在这里添加头像点击逻辑
-  console.log('头像被点击')
+  logger.debug('头像被点击')
 }
 
 /**
  * 计算属性：获取头像显示的字母（昵称首字符）
  */
 const avatarLetter = computed(() => {
-  if (!username.value) return 'U'
-  return username.value.charAt(0).toUpperCase()
+  const userInfo = getUserInfo()
+  const name = userInfo?.nickname || username.value
+  if (!name) return 'U'
+  return name.charAt(0).toUpperCase()
 })
 
 /**
@@ -145,12 +151,15 @@ const avatarColor = computed(() => {
     '#4facfe', '#00f2fe', '#43e97b', '#fa709a',
     '#fee140', '#30cfd0', '#a8edea', '#ff9a9e'
   ]
-  if (!username.value) return colors[0]
+  
+  const userInfo = getUserInfo()
+  const name = userInfo?.nickname || username.value
+  if (!name) return colors[0]
 
   // 根据用户名的字符编码总和选择颜色
   let hash = 0
-  for (let i = 0; i < username.value.length; i++) {
-    hash = username.value.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
   }
   return colors[Math.abs(hash) % colors.length]
 })
@@ -245,31 +254,24 @@ const closeUserInfo = () => {
 }
 
 const handleImageError = () => {
-  console.warn('头像加载失败，使用默认头像')
+  logger.warn('头像加载失败，使用默认头像')
   userAvatar.value = ''  // 清空头像，自动回退到默认头像
 }
 
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
-    localStorage.removeItem('isLoggedIn')
-    localStorage.removeItem('username')
-    localStorage.removeItem('userAvatar')
+    clearAuthInfo()
     router.push('/login')
   }
 }
 
 onMounted(() => {
-  const savedUsername = localStorage.getItem('username')
-  const savedAvatar = localStorage.getItem('userAvatar')
-  if (savedUsername) {
-    username.value = savedUsername
+  const userInfo = getUserInfo()
+  if (userInfo) {
+    username.value = userInfo.nickname
+    userAvatar.value = userInfo.avatar || ''
   } else {
     router.push('/login')
-  }
-
-  // 加载用户头像
-  if (savedAvatar) {
-    userAvatar.value = savedAvatar
   }
 
   // 添加触摸事件监听器

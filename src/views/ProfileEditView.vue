@@ -273,6 +273,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { createLogger } from '@/utils/logger'
+
+const logger = createLogger('ProfileEditView')
 
 const router = useRouter()
 
@@ -578,7 +581,7 @@ const saveProfile = async () => {
 
     // 如果修改了密码，这里应该调用后端 API 更新密码
     if (editForm.value.newPassword) {
-      console.log('密码已修改')
+      logger.info('密码已修改')
       // TODO: 调用后端 API 更新密码
     }
 
@@ -605,7 +608,7 @@ const saveProfile = async () => {
       router.back()
     }, 500)
   } catch (error) {
-    console.error('保存失败:', error)
+    logger.error('保存失败:', error)
     alert('保存失败，请重试')
   } finally {
     isSaving.value = false

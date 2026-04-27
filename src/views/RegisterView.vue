@@ -164,6 +164,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { createLogger } from '@/utils/logger'
+import { deleteCookie } from '@/utils/cookie'
+
+const logger = createLogger('RegisterView')
 
 // 路由实例
 const router = useRouter()
@@ -341,14 +345,14 @@ const fetchSecurityQuestions = async () => {
     const data = await response.json()
     
     if (data.success && data.code === 200) {
-      console.log('获取安全问题成功:', data.questions)
+      logger.info('获取安全问题成功:', data.questions)
       securityQuestions.value = data.questions || []
     } else {
-      console.error('获取安全问题失败:', data.message)
+      logger.error('获取安全问题失败:', data.message)
       alert('获取安全问题失败，请刷新页面重试')
     }
   } catch (error) {
-    console.error('请求安全问题接口出错:', error)
+    logger.error('请求安全问题接口出错:', error)
     alert('网络错误，无法获取安全问题')
   }
 }
@@ -358,7 +362,7 @@ const fetchSecurityQuestions = async () => {
  */
 const initRSAKey = async () => {
   try {
-    console.log('注册页面：开始初始化RSA密钥...')
+    logger.info('开始初始化RSA密钥...')
     
     // 1. 尝试从Cookie读取并验证
     const validatedKey = await getValidatedRSAKey()
@@ -367,21 +371,21 @@ const initRSAKey = async () => {
       // 验证成功，使用Cookie中的密钥
       rsaPublicKey.value = validatedKey.publicKey
       sessionId.value = validatedKey.sessionId
-      console.log('注册页面：使用Cookie中验证通过的RSA密钥')
+      logger.info('使用Cookie中验证通过的RSA密钥')
     } else {
       // 验证失败，重新获取密钥
-      console.log('注册页面：Cookie验证失败，重新获取RSA密钥')
+      logger.info('Cookie验证失败，重新获取RSA密钥')
       const keyData = await fetchRSAKey()
       rsaPublicKey.value = keyData.publicKey
       sessionId.value = keyData.sessionId
-      console.log('注册页面：已获取新的RSA密钥')
+      logger.info('已获取新的RSA密钥')
     }
     
-    console.log('注册页面：RSA密钥初始化完成')
-    console.log('注册页面：公钥:', rsaPublicKey.value.substring(0, 50) + '...')
-    console.log('注册页面：会话ID:', sessionId.value)
+    logger.info('RSA密钥初始化完成')
+    logger.debug('公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    logger.debug('会话ID:', sessionId.value)
   } catch (error) {
-    console.error('注册页面：RSA密钥初始化失败:', error)
+    logger.error('RSA密钥初始化失败:', error)
     alert('系统初始化失败：无法获取RSA密钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
   }
 }
@@ -390,7 +394,7 @@ const initRSAKey = async () => {
  * 处理返回登录页面
  */
 const handleBackToLogin = () => {
-  console.log('注册页面：返回登录页面')
+  logger.info('返回登录页面')
   router.push('/login')
 }
 
@@ -430,7 +434,7 @@ const handleRegister = async () => {
       ]
     }
 
-    console.log('发送注册请求:', registerData)
+    logger.info('发送注册请求:', registerData)
 
     // 发送POST请求到后端
     const response = await fetch('http://localhost:8835/api/auth/register', {
@@ -442,7 +446,7 @@ const handleRegister = async () => {
     })
 
     const result = await response.json()
-    console.log('注册响应:', result)
+    logger.info('注册响应:', result)
 
     // 按照后端响应格式处理：code=200 且 success=true 表示成功
     if (response.ok && result.code === 200 && result.success === true) {
@@ -457,6 +461,11 @@ const handleRegister = async () => {
         alert(result.message || '注册成功！')
       }
 
+      // 清除 Cookie 中的 RSA 密钥（注册成功后不再需要）
+      deleteCookie('sessionId')
+      deleteCookie('rsaPublicKey')
+      logger.info('已清除 Cookie 中的 RSA 密钥')
+
       // 跳转到登录页面
       router.push('/login')
     } else {
@@ -464,7 +473,7 @@ const handleRegister = async () => {
       alert(result.message || '注册失败，请稍后重试')
     }
   } catch (error) {
-    console.error('注册请求失败:', error)
+    logger.error('注册请求失败:', error)
     alert('网络错误，请稍后重试')
   } finally {
     isLoading.value = false

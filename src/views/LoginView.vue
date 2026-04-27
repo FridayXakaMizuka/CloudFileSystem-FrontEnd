@@ -50,6 +50,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { saveAuthInfo, isLoggedIn as checkIsLoggedIn } from '@/utils/auth'
+import { createLogger } from '@/utils/logger'
+import { deleteCookie } from '@/utils/cookie'
+
+const logger = createLogger('LoginView')
 
 const router = useRouter()
 const isLoggedIn = ref(false)
@@ -109,10 +114,11 @@ const handleLogin = async () => {
     const loginData = {
       sessionId: sessionId.value,
       userId: loginForm.value.username,
-      encryptedPassword: encryptedPassword  // 字段名必须是 encryptedPassword
+      encryptedPassword: encryptedPassword,
+      tokenExpiration: 604800 // 默认7天 (604800秒)
     }
 
-    console.log('发送登录请求:', loginData)
+    logger.info('发送登录请求:', loginData)
 
     // 发送POST请求到后端
     const response = await fetch('http://localhost:8835/api/auth/login', {
@@ -124,21 +130,25 @@ const handleLogin = async () => {
     })
 
     const result = await response.json()
-    console.log('登录响应:', result)
+    logger.info('登录响应:', result)
 
     // 按照后端响应格式处理：code=200 且 success=true 表示成功
     if (response.ok && result.code === 200 && result.success === true) {
-      // 登录成功
-      username.value = loginForm.value.username
-      isLoggedIn.value = true
-      localStorage.setItem('isLoggedIn', 'true')
-      localStorage.setItem('username', loginForm.value.username)
-      
-      // 保存用户ID（如果有）
-      if (result.userId) {
-        localStorage.setItem('userId', result.userId)
+      // 登录成功，保存 JWT 令牌和用户信息
+      const userInfo = {
+        userId: result.userId,
+        nickname: result.nickname,
+        userType: result.userType,
+        homeDirectory: result.homeDirectory
       }
-
+      
+      saveAuthInfo(result.token, userInfo)
+      
+      // 清除 Cookie 中的 RSA 密钥（登录成功后不再需要）
+      deleteCookie('sessionId')
+      deleteCookie('rsaPublicKey')
+      logger.info('已清除 Cookie 中的 RSA 密钥')
+      
       alert(result.message || '登录成功！')
       // 跳转到Dashboard页面
       router.push('/')
@@ -147,7 +157,7 @@ const handleLogin = async () => {
       alert(result.message || '登录失败，请检查用户名和密码')
     }
   } catch (error) {
-    console.error('登录请求失败:', error)
+    logger.error('登录请求失败:', error)
     alert('网络错误，请稍后重试')
   } finally {
     isLoading.value = false
@@ -158,17 +168,18 @@ const handleLogin = async () => {
  * 处理注册按钮点击，跳转到注册页面
  */
 const handleRegister = () => {
-  console.log('登录页面：跳转到注册页面')
+  logger.info('跳转到注册页面')
   router.push('/register')
 }
 
 onMounted(() => {
   getRandomImage()
-  const savedLoginState = localStorage.getItem('isLoggedIn')
-  const savedUsername = localStorage.getItem('username')
-  if (savedLoginState === 'true' && savedUsername) {
-    isLoggedIn.value = true
-    username.value = savedUsername
+  
+  // 检查是否已通过 JWT 登录，如果已登录则直接跳转到首页
+  if (checkIsLoggedIn()) {
+    logger.info('检测到已登录状态，跳转到首页')
+    router.push('/')
+    return
   }
   
   // 从Cookie读取并验证RSA密钥
@@ -180,7 +191,7 @@ onMounted(() => {
  */
 const initRSAKey = async () => {
   try {
-    console.log('登录页面：开始初始化RSA密钥...')
+    logger.info('开始初始化RSA密钥...')
     
     // 1. 尝试从Cookie读取并验证
     const validatedKey = await getValidatedRSAKey()
@@ -189,21 +200,21 @@ const initRSAKey = async () => {
       // 验证成功，使用Cookie中的密钥
       rsaPublicKey.value = validatedKey.publicKey
       sessionId.value = validatedKey.sessionId
-      console.log('登录页面：使用Cookie中验证通过的RSA密钥')
+      logger.info('使用Cookie中验证通过的RSA密钥')
     } else {
       // 验证失败，重新获取密钥
-      console.log('登录页面：Cookie验证失败，重新获取RSA密钥')
+      logger.info('Cookie验证失败，重新获取RSA密钥')
       const keyData = await fetchRSAKey()
       rsaPublicKey.value = keyData.publicKey
       sessionId.value = keyData.sessionId
-      console.log('登录页面：已获取新的RSA密钥')
+      logger.info('已获取新的RSA密钥')
     }
     
-    console.log('登录页面：RSA密钥初始化完成')
-    console.log('登录页面：公钥:', rsaPublicKey.value.substring(0, 50) + '...')
-    console.log('登录页面：会话ID:', sessionId.value)
+    logger.info('RSA密钥初始化完成')
+    logger.debug('公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    logger.debug('会话ID:', sessionId.value)
   } catch (error) {
-    console.error('登录页面：RSA密钥初始化失败:', error)
+    logger.error('RSA密钥初始化失败:', error)
     alert('系统初始化失败：无法获取RSA密钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
   }
 }
