@@ -112,8 +112,9 @@ import {ref, onMounted, computed, onUnmounted} from 'vue'
 import { useRouter } from 'vue-router'
 import BrowseView from './BrowseView.vue'
 import TransferView from './TransferView.vue'
-import { getUserInfo, clearAuthInfo } from '@/utils/auth'
+import { getUserInfo, clearAuthInfo, getToken } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
+import { getUserAvatar, getFullAvatarUrl, loadAuthenticatedImage, clearAvatarCache } from '@/utils/avatar'
 
 const logger = createLogger('DashboardView')
 
@@ -261,15 +262,18 @@ const handleImageError = () => {
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
     clearAuthInfo()
+    clearAvatarCache()  // 清除头像缓存
     router.push('/login')
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   const userInfo = getUserInfo()
   if (userInfo) {
     username.value = userInfo.nickname
-    userAvatar.value = userInfo.avatar || ''
+    
+    // 加载用户头像
+    await loadUserAvatar()
   } else {
     router.push('/login')
   }
@@ -279,10 +283,37 @@ onMounted(() => {
   document.addEventListener('touchend', handleTouchEnd, { passive: true })
 })
 
+/**
+ * 加载用户头像
+ */
+const loadUserAvatar = async () => {
+  try {
+    const avatarUrl = await getUserAvatar()
+    
+    if (avatarUrl) {
+      const blobUrl = await loadAuthenticatedImage(avatarUrl)
+      userAvatar.value = blobUrl
+      logger.info('头像加载成功')
+    } else {
+      logger.info('未找到头像，使用默认头像')
+      userAvatar.value = ''
+    }
+  } catch (error) {
+    logger.error('加载头像失败:', error)
+    userAvatar.value = ''
+  }
+}
+
 onUnmounted(() => {
   // 移除触摸事件监听器
   document.removeEventListener('touchstart', handleTouchStart)
   document.removeEventListener('touchend', handleTouchEnd)
+  
+  // 清理 Blob URL，避免内存泄漏
+  if (userAvatar.value && userAvatar.value.startsWith('blob:')) {
+    URL.revokeObjectURL(userAvatar.value)
+    logger.debug('已清理头像 Blob URL')
+  }
 });
 </script>
 

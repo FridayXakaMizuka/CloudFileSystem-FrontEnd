@@ -1,6 +1,7 @@
 import JSEncrypt from 'jsencrypt'
 import { setCookie, getSessionIdFromCookie, getRSAPublicKeyFromCookie } from './cookie'
 import { createLogger } from './logger'
+import { AUTH_API } from '@/config/api'
 
 const logger = createLogger('RSA')
 
@@ -11,7 +12,7 @@ const logger = createLogger('RSA')
 export const fetchRSAKey = async () => {
   try {
     logger.info('开始获取RSA公钥...')
-    const response = await fetch('http://localhost:8835/api/auth/rsa-key', {
+    const response = await fetch(AUTH_API.RSA_KEY, {
       credentials: 'include'  // 允许发送和接收 Cookie
     })
     
@@ -108,7 +109,7 @@ export const getValidatedRSAKey = async () => {
     
     // 3. 发送验证请求
     logger.info('正在向后端验证密钥有效性...')
-    const response = await fetch('http://localhost:8835/api/auth/is_rsa_valid', {
+    const response = await fetch(AUTH_API.VALIDATE_RSA, {
       method: 'POST',
       credentials: 'include',  // 自动携带 Cookie
       headers: {
@@ -213,7 +214,7 @@ export const validateRsaKey = async (sessionId, publicKey) => {
       requestBody.publicKey = publicKey
     }
     
-    const response = await fetch('http://localhost:8835/api/auth/is_rsa_valid', {
+    const response = await fetch(AUTH_API.VALIDATE_RSA, {
       method: 'POST',
       credentials: 'include',  // 自动携带 Cookie
       headers: {

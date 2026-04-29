@@ -2,7 +2,13 @@
   <div class="login-container">
     <div v-if="!isLoggedIn" class="login-wrapper">
       <div class="left-panel">
-        <img :src="randomImage" alt="Random Image" class="random-image" @load="onImageLoad" />
+        <img 
+          :src="randomImage" 
+          alt="Random Image" 
+          class="random-image" 
+          @load="onImageLoad"
+          @error="onImageError"
+        />
         <div v-if="!imageLoaded" class="image-loading">加载中...</div>
       </div>
       <div class="right-panel">
@@ -53,6 +59,7 @@ import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
 import { saveAuthInfo, isLoggedIn as checkIsLoggedIn } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
 import { deleteCookie } from '@/utils/cookie'
+import { AUTH_API } from '@/config/api'
 
 const logger = createLogger('LoginView')
 
@@ -79,7 +86,15 @@ const getRandomImage = () => {
   const timestamp = new Date().getTime()
   const width = 800
   const height = 600
-  randomImage.value = `https://picsum.photos/${width}/${height}?random=${timestamp}`
+  // 使用多个图片源，提高成功率
+  const imageSources = [
+    `https://picsum.photos/${width}/${height}?random=${timestamp}`,
+    `https://source.unsplash.com/random/${width}x${height}?nature,technology`,
+    `https://loremflickr.com/${width}/${height}/nature`
+  ]
+  // 默认使用第一个源
+  randomImage.value = imageSources[0]
+  logger.debug('设置背景图片:', randomImage.value)
 }
 
 /**
@@ -87,6 +102,17 @@ const getRandomImage = () => {
  */
 const onImageLoad = () => {
   imageLoaded.value = true
+  logger.debug('背景图片加载成功')
+}
+
+/**
+ * 图片加载失败回调
+ */
+const onImageError = () => {
+  logger.warn('背景图片加载失败，使用备用图片')
+  // 尝试使用本地渐变色背景作为降级方案
+  imageLoaded.value = true // 隐藏加载提示
+  // 可以设置一个备用的图片或保持空白让CSS渐变生效
 }
 
 /**
@@ -121,7 +147,7 @@ const handleLogin = async () => {
     logger.info('发送登录请求:', loginData)
 
     // 发送POST请求到后端
-    const response = await fetch('http://localhost:8835/api/auth/login', {
+    const response = await fetch(AUTH_API.LOGIN, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -238,6 +264,8 @@ const initRSAKey = async () => {
   flex: 1;
   position: relative;
   overflow: hidden;
+  /* 备用背景渐变，图片加载失败时显示 */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .random-image {
@@ -245,6 +273,9 @@ const initRSAKey = async () => {
   height: 100%;
   object-fit: cover;
   transition: opacity 0.3s ease;
+  /* 确保图片在背景之上 */
+  position: relative;
+  z-index: 1;
 }
 
 .image-loading {

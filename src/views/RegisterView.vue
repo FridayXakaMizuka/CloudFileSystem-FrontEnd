@@ -166,6 +166,7 @@ import { useRouter } from 'vue-router'
 import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
 import { createLogger } from '@/utils/logger'
 import { deleteCookie } from '@/utils/cookie'
+import { AUTH_API } from '@/config/api'
 
 const logger = createLogger('RegisterView')
 
@@ -341,7 +342,7 @@ const isFormValid = computed(() => {
  */
 const fetchSecurityQuestions = async () => {
   try {
-    const response = await fetch('http://localhost:8835/api/auth/security-questions')
+    const response = await fetch(AUTH_API.SECURITY_QUESTIONS)
     const data = await response.json()
     
     if (data.success && data.code === 200) {
@@ -437,7 +438,7 @@ const handleRegister = async () => {
     logger.info('发送注册请求:', registerData)
 
     // 发送POST请求到后端
-    const response = await fetch('http://localhost:8835/api/auth/register', {
+    const response = await fetch(AUTH_API.REGISTER, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

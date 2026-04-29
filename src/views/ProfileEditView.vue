@@ -98,7 +98,7 @@
                     @change="handleAvatarChange"
                     style="display: none"
                 />
-                <p class="hint-text">支持 JPG、PNG 格式，文件大小不超过 2MB</p>
+                <p class="hint-text">支持 JPG、PNG、GIF、WebP 格式，文件大小不超过 5MB</p>
               </div>
             </div>
           </div>
@@ -271,9 +271,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { createLogger } from '@/utils/logger'
+import { getUserAvatar, uploadAndSetAvatar, getFullAvatarUrl, loadAuthenticatedImage } from '@/utils/avatar'
 
 const logger = createLogger('ProfileEditView')
 
@@ -427,31 +428,38 @@ const triggerFileInput = () => {
 }
 
 /**
- * 处理头像文件选择
+ * 处理头像文件选择（上传并设置）
  */
-const handleAvatarChange = (event) => {
+const handleAvatarChange = async (event) => {
   const file = event.target.files[0]
   if (!file) return
 
-  // 验证文件类型
-  if (!file.type.startsWith('image/')) {
-    alert('请选择图片文件')
-    return
+  try {
+    // 显示上传中状态
+    isSaving.value = true
+    
+    logger.info('开始上传头像...', file.name)
+    
+    // 调用上传工具（包含验证、上传、设置全流程）
+    const result = await uploadAndSetAvatar(file, (progress) => {
+      logger.debug(`头像上传进度: ${progress}%`)
+    })
+    
+    // 更新预览（转换为完整 URL）
+    previewAvatar.value = getFullAvatarUrl(result.filePath)
+    
+    // 更新原始数据
+    originalData.value.avatar = previewAvatar.value
+    hasChanges.value = false
+    
+    alert(result.message || '头像设置成功！')
+    logger.info('头像上传成功', result)
+  } catch (error) {
+    logger.error('头像上传失败:', error)
+    alert('头像上传失败：' + error.message)
+  } finally {
+    isSaving.value = false
   }
-
-  // 验证文件大小（2MB）
-  if (file.size > 2 * 1024 * 1024) {
-    alert('图片大小不能超过 2MB')
-    return
-  }
-
-  // 读取文件并预览
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    previewAvatar.value = e.target.result
-    checkChanges()
-  }
-  reader.readAsDataURL(file)
 }
 
 /**
@@ -618,11 +626,10 @@ const saveProfile = async () => {
 /**
  * 组件挂载时加载用户信息
  */
-onMounted(() => {
+onMounted(async () => {
   const savedUsername = localStorage.getItem('username')
   const savedEmail = localStorage.getItem('userEmail')
   const savedPhone = localStorage.getItem('userPhone')
-  const savedAvatar = localStorage.getItem('userAvatar')
 
   if (savedUsername) {
     editForm.value.nickname = savedUsername
@@ -639,9 +646,43 @@ onMounted(() => {
     originalData.value.phone = savedPhone
   }
 
-  if (savedAvatar) {
-    previewAvatar.value = savedAvatar
-    originalData.value.avatar = savedAvatar
+  // 加载用户头像
+  await loadUserAvatar()
+})
+
+/**
+ * 加载用户头像
+ */
+const loadUserAvatar = async () => {
+  try {
+    logger.info('开始加载用户头像...')
+    const avatarUrl = await getUserAvatar()
+    
+    if (avatarUrl) {
+      // 使用 fetch 加载需要认证的头像
+      const blobUrl = await loadAuthenticatedImage(avatarUrl)
+      previewAvatar.value = blobUrl
+      originalData.value.avatar = blobUrl
+      logger.info('头像加载成功', blobUrl)
+    } else {
+      logger.info('未找到头像，使用默认头像')
+      previewAvatar.value = ''
+      originalData.value.avatar = ''
+    }
+  } catch (error) {
+    logger.error('加载头像失败:', error)
+    previewAvatar.value = ''
+    originalData.value.avatar = ''
+  }
+}
+
+/**
+ * 组件卸载前清理 Blob URL
+ */
+onBeforeUnmount(() => {
+  if (previewAvatar.value && previewAvatar.value.startsWith('blob:')) {
+    URL.revokeObjectURL(previewAvatar.value)
+    logger.debug('已清理头像 Blob URL')
   }
 })
 </script>
