@@ -3,8 +3,16 @@
   <div class="browse-container">
     <!-- 浏览页面头部：包含标题和工具栏 -->
     <div class="browse-header">
-      <!-- 页面标题 -->
-      <h2 class="title">文件浏览</h2>
+      <!-- 左侧：页面标题和空间使用情况 -->
+      <div class="header-left">
+        <h2 class="title">文件浏览</h2>
+        <div class="storage-info">
+          <div class="storage-bar">
+            <div class="storage-used" :style="{ width: storagePercentage + '%' }"></div>
+          </div>
+          <span class="storage-text">{{ storageUsed }} / {{ storageTotal }}</span>
+        </div>
+      </div>
       <!-- 工具栏按钮组 -->
       <div class="toolbar">
         <!-- 上传文件按钮 -->
@@ -63,7 +71,11 @@
 
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { createLogger } from '@/utils/logger'
+import { getCachedUserInfo } from '@/utils/userInfo'
+
+const logger = createLogger('BrowseView')
 
 // 文件列表数据（模拟数据）
 const files = ref([
@@ -74,6 +86,20 @@ const files = ref([
   { id: 5, name: '数据表格.xlsx', type: 'excel', size: 1048576, date: '2024-01-11' },
   { id: 6, name: '照片.jpg', type: 'image', size: 3145728, date: '2024-01-10' },
 ])
+
+// 存储空间信息
+const storageUsed = ref('0 GB')
+const storageTotal = ref('10 GB')
+
+/**
+ * 计算属性：存储空间使用百分比
+ */
+const storagePercentage = computed(() => {
+  const used = parseFloat(storageUsed.value)
+  const total = parseFloat(storageTotal.value)
+  if (total === 0) return 0
+  return Math.min((used / total) * 100, 100)
+})
 
 /**
  * 根据文件类型获取对应的图标
@@ -161,6 +187,39 @@ const handleDelete = (file) => {
     files.value = files.value.filter(f => f.id !== file.id)
   }
 }
+
+/**
+ * 加载用户存储空间信息（从缓存获取）
+ */
+const loadStorageInfo = () => {
+  try {
+    // 从 sessionStorage 缓存中获取用户信息
+    const cachedUserInfo = getCachedUserInfo()
+    
+    if (!cachedUserInfo) {
+      logger.warn('未找到缓存的用户信息')
+      return
+    }
+    
+    logger.info('从缓存加载存储信息...')
+    
+    // 更新存储空间信息
+    if (cachedUserInfo.storageUsed && cachedUserInfo.storageTotal) {
+      storageUsed.value = cachedUserInfo.storageUsed
+      storageTotal.value = cachedUserInfo.storageTotal
+      logger.info('存储空间信息已加载:', `${storageUsed.value} / ${storageTotal.value}`)
+    } else {
+      logger.warn('缓存中没有存储信息')
+    }
+  } catch (error) {
+    logger.error('加载存储信息失败:', error)
+  }
+}
+
+// 组件挂载时加载存储信息
+onMounted(() => {
+  loadStorageInfo()
+})
 </script>
 
 <style scoped>
@@ -182,12 +241,63 @@ const handleDelete = (file) => {
   flex-shrink: 0; /* 不允许缩小 */
 }
 
+/* 头部左侧：标题和存储信息 */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
 /* 页面标题样式 */
 .title {
   margin: 0; /* 清除默认外边距 */
   color: #333; /* 深灰色文字 */
   font-size: 1.75rem; /* 字体大小 28px */
   font-weight: 600; /* 字体粗细：半粗体 */
+}
+
+/* 存储空间信息容器 */
+.storage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 200px;
+}
+
+/* 存储进度条容器 */
+.storage-bar {
+  width: 100%;
+  height: 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 已使用存储空间进度条 */
+.storage-used {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+/* 存储进度条高使用量警告（超过80%） */
+.storage-used.warning {
+  background: linear-gradient(90deg, #ffa940 0%, #ff7a45 100%);
+}
+
+/* 存储进度条危险提示（超过90%） */
+.storage-used.danger {
+  background: linear-gradient(90deg, #ff4d4f 0%, #cf1322 100%);
+}
+
+/* 存储空间文本 */
+.storage-text {
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
 }
 
 /* 文件列表区域：占据剩余空间，可滚动 */
@@ -370,6 +480,20 @@ const handleDelete = (file) => {
     flex-direction: column; /* 子元素垂直排列 */
     align-items: flex-start; /* 左对齐 */
     gap: 1rem; /* 元素间距 16px */
+  }
+
+  /* 头部左侧改为垂直布局 */
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  /* 存储信息占满宽度 */
+  .storage-info {
+    width: 100%;
+    min-width: auto;
   }
 
   /* 工具栏占满宽度 */

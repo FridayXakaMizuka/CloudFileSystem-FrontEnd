@@ -13,15 +13,15 @@
       </div>
       <div class="right-panel">
         <div class="login-form">
-          <h1 class="title">网盘系统</h1>
+          <h1 class="title">CloudFileSystem<br>网盘系统</h1>
           <form @submit.prevent="handleLogin">
             <div class="form-group">
-              <label for="username">用户名</label>
+              <label for="username">用户ID/邮箱</label>
               <input
                   type="text"
                   id="username"
                   v-model="loginForm.username"
-                  placeholder="请输入用户名"
+                  placeholder="请输入用户ID/邮箱"
                   required
                   autocomplete="username"
               />
@@ -45,6 +45,9 @@
                 注册
               </button>
             </div>
+            <div class="forgot-password-link">
+              <a href="#" @click.prevent="handleForgotPassword">忘记密码？点此重设密码</a>
+            </div>
           </form>
         </div>
       </div>
@@ -55,11 +58,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
 import { saveAuthInfo, isLoggedIn as checkIsLoggedIn } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
 import { deleteCookie } from '@/utils/cookie'
 import { AUTH_API } from '@/config/api'
+import { fetchAllUserInfo } from '@/utils/userInfo'
+import { showSuccess, showError } from '@/utils/toast'
+import { clearSessionId } from '@/utils/sessionId'
 
 const logger = createLogger('LoginView')
 
@@ -120,13 +126,13 @@ const onImageError = () => {
  */
 const handleLogin = async () => {
   if (!loginForm.value.username || !loginForm.value.password) {
-    alert('请输入用户名和密码')
+    showError('请输入用户名和密码')
     return
   }
 
   // 检查是否已获取公钥和会话ID
   if (!rsaPublicKey.value || !sessionId.value) {
-    alert('系统初始化未完成，请稍后重试')
+    showError('系统初始化未完成，请稍后重试')
     return
   }
 
@@ -139,7 +145,7 @@ const handleLogin = async () => {
     // 构造请求数据（按照后端接口格式）
     const loginData = {
       sessionId: sessionId.value,
-      userId: loginForm.value.username,
+      userIdOrEmail: loginForm.value.username,
       encryptedPassword: encryptedPassword,
       tokenExpiration: 604800 // 默认7天 (604800秒)
     }
@@ -170,21 +176,34 @@ const handleLogin = async () => {
       
       saveAuthInfo(result.token, userInfo)
       
-      // 清除 Cookie 中的 RSA 密钥（登录成功后不再需要）
-      deleteCookie('sessionId')
+      // 清除 Cookie 中的 RSA 密钥和 sessionId（登录成功后不再需要）
       deleteCookie('rsaPublicKey')
-      logger.info('已清除 Cookie 中的 RSA 密钥')
+      clearSessionId()
+      logger.info('已清除 Cookie 中的 RSA 密钥和 sessionId')
       
-      alert(result.message || '登录成功！')
-      // 跳转到Dashboard页面
-      router.push('/')
+      // 登录后获取所有个人信息并缓存
+      logger.info('登录成功，开始获取用户信息...')
+      const allUserInfo = await fetchAllUserInfo()
+      
+      if (allUserInfo) {
+        logger.info('用户信息获取成功:', allUserInfo.nickname)
+      } else {
+        logger.warn('用户信息获取失败，但不影响登录')
+      }
+      
+      showSuccess(result.message || '登录成功！')
+      
+      // 延迟 1 秒后跳转到 Dashboard
+      setTimeout(() => {
+        router.push('/')
+      }, 1000)
     } else {
       // 登录失败，显示错误信息
-      alert(result.message || '登录失败，请检查用户名和密码')
+      showError(result.message || '登录失败，请检查用户名和密码')
     }
   } catch (error) {
     logger.error('登录请求失败:', error)
-    alert('网络错误，请稍后重试')
+    showError('网络错误，请稍后重试')
   } finally {
     isLoading.value = false
   }
@@ -196,6 +215,14 @@ const handleLogin = async () => {
 const handleRegister = () => {
   logger.info('跳转到注册页面')
   router.push('/register')
+}
+
+/**
+ * 处理忘记密码链接点击，跳转到重置密码页面
+ */
+const handleForgotPassword = () => {
+  logger.info('跳转到重置密码页面')
+  router.push('/reset-password')
 }
 
 onMounted(() => {
@@ -213,35 +240,23 @@ onMounted(() => {
 })
 
 /**
- * 初始化RSA密钥（优先从Cookie验证，失败则重新获取）
+ * 初始化RSA密钥（直接获取新公钥）
  */
 const initRSAKey = async () => {
   try {
     logger.info('开始初始化RSA密钥...')
     
-    // 1. 尝试从Cookie读取并验证
-    const validatedKey = await getValidatedRSAKey()
+    // 直接调用 /auth/rsa-key 获取新公钥（后端不进行有效性校验）
+    const keyData = await fetchRSAKey()
+    rsaPublicKey.value = keyData.publicKey
+    sessionId.value = keyData.sessionId
+    logger.info('RSA密钥初始化成功')
     
-    if (validatedKey) {
-      // 验证成功，使用Cookie中的密钥
-      rsaPublicKey.value = validatedKey.publicKey
-      sessionId.value = validatedKey.sessionId
-      logger.info('使用Cookie中验证通过的RSA密钥')
-    } else {
-      // 验证失败，重新获取密钥
-      logger.info('Cookie验证失败，重新获取RSA密钥')
-      const keyData = await fetchRSAKey()
-      rsaPublicKey.value = keyData.publicKey
-      sessionId.value = keyData.sessionId
-      logger.info('已获取新的RSA密钥')
-    }
-    
-    logger.info('RSA密钥初始化完成')
     logger.debug('公钥:', rsaPublicKey.value.substring(0, 50) + '...')
     logger.debug('会话ID:', sessionId.value)
   } catch (error) {
     logger.error('RSA密钥初始化失败:', error)
-    alert('系统初始化失败：无法获取RSA密钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
+    showError('系统初始化失败：无法获取RSA密钥。请检查后端服务是否正常运行')
   }
 }
 
@@ -347,7 +362,7 @@ const initRSAKey = async () => {
 .button-group {
   display: flex;
   gap: 1rem;
-  margin-top: 2rem;
+  margin-top: 1.5rem;
 }
 
 .btn {
@@ -386,6 +401,24 @@ const initRSAKey = async () => {
   background: #667eea;
   color: white;
   transform: translateY(-2px);
+}
+
+/* 忘记密码链接 */
+.forgot-password-link {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.forgot-password-link a {
+  color: #667eea;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.forgot-password-link a:hover {
+  color: #764ba2;
+  text-decoration: underline;
 }
 
 .welcome-content h1 {

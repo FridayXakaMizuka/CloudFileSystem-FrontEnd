@@ -3,6 +3,8 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import ProfileEditView from '../views/ProfileEditView.vue'
+import EditFieldView from '../views/EditFieldView.vue'
+import ResetPasswordView from '../views/ResetPasswordView.vue'
 import { isLoggedIn } from '@/utils/auth'
 
 const router = createRouter({
@@ -29,6 +31,17 @@ const router = createRouter({
             name: 'profile',
             component: ProfileEditView,
             meta: { requiresAuth: true }
+        },
+        {
+            path: '/profile/edit',
+            name: 'editField',
+            component: EditFieldView,
+            meta: { requiresAuth: true }
+        },
+        {
+            path: '/reset-password',
+            name: 'resetPassword',
+            component: ResetPasswordView
         },
         {
             path: '/:pathMatch(.*)*',

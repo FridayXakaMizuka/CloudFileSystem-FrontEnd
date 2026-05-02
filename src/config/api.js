@@ -21,7 +21,31 @@ export const AUTH_API = {
   REGISTER: `${BASE_API_URL}/auth/register`,
   
   // 获取安全问题列表
-  SECURITY_QUESTIONS: `${BASE_API_URL}/auth/security-questions`
+  SECURITY_QUESTIONS: `${BASE_API_URL}/auth/security-questions`,
+  
+  // 发送邮箱验证码
+  SEND_VERIFICATION_CODE: `${BASE_API_URL}/auth/vfcode/email`,
+  
+  // 发送手机号验证码
+  SEND_PHONE_VERIFICATION_CODE: `${BASE_API_URL}/auth/vfcode/phone`,
+  
+  // 重置密码 - 查找用户
+  RESET_PASSWORD_FIND_USER: `${BASE_API_URL}/auth/reset_password/find_user`,
+  
+  // 重置密码 - 邮箱验证
+  RESET_PASSWORD_VERIFY_EMAIL: `${BASE_API_URL}/auth/reset_password/verify/email`,
+  
+  // 重置密码 - 手机验证
+  RESET_PASSWORD_VERIFY_PHONE: `${BASE_API_URL}/auth/reset_password/verify/phone`,
+  
+  // 重置密码 - 密保问题验证
+  RESET_PASSWORD_VERIFY_SECURITY: `${BASE_API_URL}/auth/reset_password/verify/security_answer`,
+  
+  // 重置密码 - 设置新密码
+  RESET_PASSWORD_SET_NEW: `${BASE_API_URL}/auth/reset_password/set_new_password`,
+  
+  // 重置密码 - 重置密码（最后一步）
+  RESET_PASSWORD_RESET: `${BASE_API_URL}/auth/reset_password/reset`
 }
 
 // 用户相关接口（示例，可根据需要扩展）
@@ -81,7 +105,22 @@ export const PROFILE_API = {
   UPLOAD_AVATAR: FILE_API.UPLOAD,
   
   // 删除头像
-  DELETE_AVATAR: `${BASE_API_URL}/profile/avatar/delete`
+  DELETE_AVATAR: `${BASE_API_URL}/profile/avatar/delete`,
+  
+  // 修改密码
+  CHANGE_PASSWORD: `${BASE_API_URL}/profile/password/set`,
+  
+  // 修改邮箱
+  SET_EMAIL: `${BASE_API_URL}/profile/email/set`,
+  
+  // 修改手机号
+  SET_PHONE: `${BASE_API_URL}/profile/phone/set`,
+  
+  // 修改昵称
+  SET_NICKNAME: `${BASE_API_URL}/profile/nickname/set`,
+  
+  // 获取所有个人信息
+  GET_ALL: `${BASE_API_URL}/profile/get_all`
 }
 
 // 传输相关接口（示例，可根据需要扩展）
