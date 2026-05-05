@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>客户端检测测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+    }
+    h2 {
+      color: #667eea;
+      margin-top: 0;
+    }
+    .info-item {
+      margin: 10px 0;
+      padding: 10px;
+      background: #f9f9f9;
+      border-left: 3px solid #667eea;
+    }
+    .label {
+      font-weight: bold;
+      color: #555;
+    }
+    .value {
+      color: #333;
+      margin-left: 10px;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover {
+      background: #764ba2;
+    }
+    .success {
+      color: #10b981;
+    }
+    .error {
+      color: #ef4444;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 客户端检测测试</h1>
+  
+  <div class="card">
+    <h2>同步检测结果</h2>
+    <div id="sync-info"></div>
+    <button onclick="testSync()">重新检测</button>
+  </div>
+
+  <div class="card">
+    <h2>异步检测结果（Electron 详细信息）</h2>
+    <div id="async-info"></div>
+    <button onclick="testAsync()">获取详细信息</button>
+  </div>
+
+  <div class="card">
+    <h2>客户端标识符</h2>
+    <div id="identifier"></div>
+    <button onclick="testIdentifier()">获取标识符</button>
+  </div>
+
+  <div class="card">
+    <h2>请求头测试</h2>
+    <div id="headers"></div>
+    <button onclick="testHeaders()">生成请求头</button>
+  </div>
+
+  <script type="module">
+    import { 
+      getClientInfoSync, 
+      getClientInfo, 
+      getClientIdentifier,
+      addClientInfoToHeaders,
+      ClientType 
+    } from '@/utils/clientDetector.js'
+
+    // 暴露到全局供按钮调用
+    window.testSync = () => {
+      const info = getClientInfoSync()
+      displaySyncInfo(info)
+    }
+
+    window.testAsync = async () => {
+      const info = await getClientInfo()
+      displayAsyncInfo(info)
+    }
+
+    window.testIdentifier = () => {
+      const identifier = getClientIdentifier()
+      document.getElementById('identifier').innerHTML = `
+        <div class="info-item">
+          <span class="label">客户端标识符:</span>
+          <span class="value">${identifier}</span>
+        </div>
+      `
+    }
+
+    window.testHeaders = () => {
+      const headers = new Headers({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer test-token'
+      })
+      
+      addClientInfoToHeaders(headers)
+      
+      let html = '<h3>请求头列表:</h3>'
+      headers.forEach((value, key) => {
+        html += `
+          <div class="info-item">
+            <span class="label">${key}:</span>
+            <span class="value">${value}</span>
+          </div>
+        `
+      })
+      
+      document.getElementById('headers').innerHTML = html
+    }
+
+    function displaySyncInfo(info) {
+      const html = `
+        <div class="info-item">
+          <span class="label">客户端类型:</span>
+          <span class="value">${info.type}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">平台:</span>
+          <span class="value">${info.platform}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">是否 Electron:</span>
+          <span class="value ${info.isElectron ? 'success' : ''}">${info.isElectron}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">是否移动端:</span>
+          <span class="value ${info.isMobile ? 'success' : ''}">${info.isMobile}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">User Agent:</span>
+          <span class="value" style="font-size: 12px;">${info.userAgent}</span>
+        </div>
+      `
+      document.getElementById('sync-info').innerHTML = html
+    }
+
+    function displayAsyncInfo(info) {
+      let html = `
+        <div class="info-item">
+          <span class="label">客户端类型:</span>
+          <span class="value">${info.type}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">平台:</span>
+          <span class="value">${info.platform}</span>
+        </div>
+      `
+      
+      if (info.isElectron) {
+        html += `
+          <div class="info-item">
+            <span class="label">Electron 版本:</span>
+            <span class="value success">${info.electronVersion || 'N/A'}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Chrome 版本:</span>
+            <span class="value">${info.chromeVersion || 'N/A'}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Node 版本:</span>
+            <span class="value">${info.nodeVersion || 'N/A'}</span>
+          </div>
+        `
+      }
+      
+      document.getElementById('async-info').innerHTML = html
+    }
+
+    // 页面加载时自动检测
+    window.onload = () => {
+      testSync()
+      testIdentifier()
+    }
+  </script>
+</body>
+</html>
