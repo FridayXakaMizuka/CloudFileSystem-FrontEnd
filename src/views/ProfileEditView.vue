@@ -791,6 +791,10 @@ const isFieldValid = (field) => {
     return editForm.value.phone !== userInfo.value.phone &&
            editForm.value.phoneVerificationCode &&
            phoneSessionId.value
+  } else if (field === 'security') {
+    // 密保问题需要验证问题ID和答案
+    return editForm.value.securityQuestionId && 
+           editForm.value.securityAnswer.trim().length > 0
   }
   // 其他字段：有变化即为有效
   return editForm.value[field] !== userInfo.value[field]
@@ -857,6 +861,23 @@ const startEdit = async (field) => {
     // 点击密码修改时，立即获取 RSA 密钥（使用密码用途）
     logger.info('开始编辑密码，获取 RSA 密钥...')
     await loadRsaKey('password')
+  } else if (field === 'security') {
+    // 密保问题编辑
+    editForm.value.securityQuestionId = ''
+    editForm.value.securityAnswer = ''
+    
+    // 获取密保问题列表
+    await loadSecurityQuestions()
+    
+    // 为密保问题修改生成独立的 sessionId
+    const securitySessionId = getOrCreatePurposeSessionId('security')
+    logger.info('密保问题修改专用 sessionId:', securitySessionId)
+    
+    // 获取 RSA 密钥（使用密保问题用途）并保存到专用变量
+    logger.info('开始获取 RSA 密钥用于密保问题修改...')
+    await loadRsaKey('security')
+    securityRsaPublicKey.value = rsaPublicKey.value
+    logger.info('密保问题专用 RSA 密钥已保存')
   }
   
   logger.info(`开始编辑${field}`)
@@ -895,6 +916,15 @@ const cancelEdit = (field) => {
     editForm.value.phoneVerificationCode = ''
     phoneRsaPublicKey.value = ''  // ✅ 清除手机号专用 RSA 密钥
     logger.info('已清除手机号专用 RSA 密钥')
+  }
+  
+  // 清理密保问题相关状态
+  if (field === 'security') {
+    clearPurposeSessionId('security')
+    editForm.value.securityQuestionId = ''
+    editForm.value.securityAnswer = ''
+    securityRsaPublicKey.value = ''  // ✅ 清除密保问题专用 RSA 密钥
+    logger.info('已清除密保问题专用 RSA 密钥')
   }
   
   logger.info('取消编辑', field)
@@ -983,6 +1013,18 @@ const validateSpecificField = (field) => {
       // 验证确认密码
       if (confirmPassword && newPassword !== confirmPassword) {
         return { field: 'confirmPassword', message: '两次输入的密码不一致' }
+      }
+      
+      return ''
+    
+    case 'security':
+      const securityQuestionId = editForm.value.securityQuestionId
+      const securityAnswer = editForm.value.securityAnswer
+      
+      if (!securityQuestionId) {
+        return { field: 'securityQuestionId', message: '请选择密保问题' }
+      } else if (!securityAnswer || securityAnswer.trim() === '') {
+        return { field: 'securityAnswer', message: '请输入密保问题答案' }
       }
       
       return ''
@@ -1349,6 +1391,82 @@ const saveField = async (field) => {
       } else {
         showError(result.message || '手机号修改失败')
       }
+    } else if (field === 'security') {
+      // 密保问题修改逻辑
+      const newSecurityQuestionId = parseInt(editForm.value.securityQuestionId)
+      const securityAnswer = editForm.value.securityAnswer
+      
+      logger.info('准备修改密保问题:', {
+        newSecurityQuestionId,
+        securityAnswerLength: securityAnswer?.length
+      })
+      
+      // 检查 RSA 密钥是否存在
+      if (!securityRsaPublicKey.value) {
+        logger.warn('密保问题专用 RSA 密钥未加载，尝试重新获取...')
+        await loadRsaKey('security')
+        securityRsaPublicKey.value = rsaPublicKey.value  // ✅ 保存到专用变量
+        
+        if (!securityRsaPublicKey.value) {
+          showError('系统初始化失败，请刷新页面重试')
+          return
+        }
+      }
+      
+      // 使用密保问题专用的 RSA 密钥加密答案
+      const encryptedAnswer = encryptPassword(securityAnswer, securityRsaPublicKey.value)
+      
+      // 构造请求数据（根据项目记忆，使用序号而非 ID）
+      const requestData = {
+        securityQuestionId: newSecurityQuestionId,  // 使用序号（1, 2, 3...）
+        encryptedSecurityAnswer: encryptedAnswer
+      }
+      
+      logger.info('发送密保问题修改请求:', { 
+        securityQuestionId: newSecurityQuestionId,
+        encryptedAnswer: encryptedAnswer.substring(0, 50) + '...'
+      })
+      
+      // 发送 POST 请求到 /profile/security_question/set
+      const response = await fetch(PROFILE_API.SET_SECURITY_QUESTION, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      })
+      
+      result = await response.json()
+      logger.info('密保问题修改响应:', result)
+      
+      if (response.ok && result.success === true) {
+        showSuccess(result.message || '密保问题修改成功！')
+        
+        // 更新本地数据 - 找到对应的问题文本
+        const selectedQuestion = securityQuestions.value.find(q => q.id === newSecurityQuestionId)
+        if (selectedQuestion) {
+          userInfo.value.securityQuestion = selectedQuestion.question
+          logger.info('已更新本地密保问题:', selectedQuestion.question)
+        }
+        
+        // ✅ 更新 sessionStorage 缓存
+        updateUserInfoField('securityQuestion', selectedQuestion?.question || '')
+        
+        // 从修改集合中移除
+        modifiedFields.value.delete('security')
+        
+        // 退出编辑模式
+        editingFields.value.delete('security')
+        fieldError.value = ''
+        clearPurposeSessionId('security')
+        editForm.value.securityQuestionId = ''
+        editForm.value.securityAnswer = ''
+        securityRsaPublicKey.value = ''  // ✅ 清除密保问题专用 RSA 密钥
+        logger.info('已清除密保问题专用 RSA 密钥')
+      } else {
+        showError(result.message || '密保问题修改失败')
+      }
     }
   } catch (error) {
     logger.error('修改失败:', error)
@@ -1420,6 +1538,7 @@ const loadUserInfoFromCache = () => {
     userInfo.value.nickname = cachedUserInfo.nickname !== undefined ? cachedUserInfo.nickname : ''
     userInfo.value.email = cachedUserInfo.email !== undefined ? cachedUserInfo.email : ''
     userInfo.value.phone = cachedUserInfo.phone !== undefined ? cachedUserInfo.phone : ''
+    userInfo.value.securityQuestion = cachedUserInfo.securityQuestion !== undefined ? cachedUserInfo.securityQuestion : ''
     userInfo.value.storageUsed = cachedUserInfo.storageUsed !== undefined ? cachedUserInfo.storageUsed : '0 GB'
     userInfo.value.storageTotal = cachedUserInfo.storageTotal !== undefined ? cachedUserInfo.storageTotal : '10 GB'
     
@@ -1475,7 +1594,7 @@ const loadUserInfoFromCache = () => {
 
 /**
  * 获取 RSA 公钥并保存到 Cookie
- * @param {string} purpose - 可选的用途标识（'email', 'phone', 'password'）
+ * @param {string} purpose - 可选的用途标识（'email', 'phone', 'password', 'security'）
  */
 const loadRsaKey = async (purpose = null) => {
   if (isRsaKeyLoading.value) {
@@ -1498,6 +1617,40 @@ const loadRsaKey = async (purpose = null) => {
     showError('系统初始化失败，请刷新页面重试')
   } finally {
     isRsaKeyLoading.value = false
+  }
+}
+
+/**
+ * 获取密保问题列表
+ */
+const loadSecurityQuestions = async () => {
+  try {
+    logger.info('开始获取密保问题列表...')
+    
+    const response = await fetch(AUTH_API.SECURITY_QUESTIONS, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const result = await response.json()
+    
+    if (result.code === 200 && result.success === true && result.questions) {
+      securityQuestions.value = result.questions
+      logger.info('密保问题列表获取成功:', securityQuestions.value.length, '个问题')
+      logger.debug('问题列表:', securityQuestions.value)
+    } else {
+      logger.warn('获取密保问题列表失败:', result.message)
+      showError('获取密保问题列表失败')
+    }
+  } catch (error) {
+    logger.error('获取密保问题列表异常:', error)
+    showError('网络错误，请稍后重试')
   }
 }
 
@@ -1695,7 +1848,7 @@ const handleScroll = () => {
   scrollTimeout = setTimeout(() => {
     if (!contentArea.value) return
     
-    const sections = ['avatar', 'basic', 'contact', 'password', 'verification', 'info']
+    const sections = ['avatar', 'basic', 'contact', 'password', 'security', 'info']
     const scrollTop = contentArea.value.scrollTop
     
     // 找到当前可见的区块
@@ -2333,6 +2486,24 @@ onBeforeUnmount(() => {
   font-size: 1rem; /* 字体大小 */
   transition: all 0.3s ease; /* 过渡动画 */
   outline: none; /* 移除默认轮廓 */
+}
+
+/* 表单下拉框 */
+.security-question-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  outline: none;
+  background-color: white;
+  cursor: pointer;
+}
+
+.security-question-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 /* 输入框聚焦效果 */
