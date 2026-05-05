@@ -1324,19 +1324,21 @@ const loadUserInfoFromCache = () => {
   try {
     const cachedUserInfo = getCachedUserInfo()
     
+    // 检查缓存是否存在（区分 null/undefined 和空对象）
     if (!cachedUserInfo) {
       logger.warn('未找到缓存的用户信息')
       return false
     }
     
     logger.info('从缓存加载用户信息...')
+    logger.debug('缓存数据:', cachedUserInfo)
     
-    // 更新用户信息
-    userInfo.value.nickname = cachedUserInfo.nickname || ''
-    userInfo.value.email = cachedUserInfo.email || ''
-    userInfo.value.phone = cachedUserInfo.phone || ''
-    userInfo.value.storageUsed = cachedUserInfo.storageUsed || '0 GB'
-    userInfo.value.storageTotal = cachedUserInfo.storageTotal || '10 GB'
+    // 更新用户信息（保留空字符串，不覆盖为默认值）
+    userInfo.value.nickname = cachedUserInfo.nickname !== undefined ? cachedUserInfo.nickname : ''
+    userInfo.value.email = cachedUserInfo.email !== undefined ? cachedUserInfo.email : ''
+    userInfo.value.phone = cachedUserInfo.phone !== undefined ? cachedUserInfo.phone : ''
+    userInfo.value.storageUsed = cachedUserInfo.storageUsed !== undefined ? cachedUserInfo.storageUsed : '0 GB'
+    userInfo.value.storageTotal = cachedUserInfo.storageTotal !== undefined ? cachedUserInfo.storageTotal : '10 GB'
     
     // 更新编辑表单的原始数据
     editForm.value.nickname = userInfo.value.nickname
@@ -1767,7 +1769,25 @@ const saveProfile = async () => {
  */
 onMounted(async () => {
   // 从缓存加载用户信息（App.vue 已经获取过）
-  const loaded = loadUserInfoFromCache()
+  let loaded = loadUserInfoFromCache()
+  
+  // 如果缓存中没有用户信息，从后端获取
+  if (!loaded) {
+    logger.info('缓存中未找到用户信息，从后端获取...')
+    try {
+      const allUserInfo = await fetchAllUserInfo()
+      if (allUserInfo) {
+        logger.info('用户信息获取成功，重新从缓存加载')
+        loaded = loadUserInfoFromCache()
+      } else {
+        logger.error('从后端获取用户信息失败')
+        showError('获取用户信息失败，请刷新页面重试')
+      }
+    } catch (error) {
+      logger.error('获取用户信息异常:', error)
+      showError('网络错误，请稍后重试')
+    }
+  }
   
   // 注意：RSA 密钥不在页面加载时获取，只在需要验证密码时才获取
   
