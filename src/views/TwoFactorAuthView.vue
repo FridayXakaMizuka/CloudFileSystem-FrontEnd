@@ -230,9 +230,8 @@ import { getCookie, setCookie, deleteCookie } from '@/utils/cookie'
 import { encryptPassword } from '@/utils/rsa'
 import { saveAuthInfo } from '@/utils/auth'
 import { fetchAllUserInfo } from '@/utils/userInfo'
-import { addClientInfoToHeaders } from '@/utils/clientDetector'
+import { addAllRequestHeaders } from '@/utils/requestHeaders'
 import { showSuccess, showError } from '@/utils/toast'
-import { getDeviceFingerprint } from '@/utils/deviceFingerprint'
 
 const logger = createLogger('TwoFactorAuth')
 const router = useRouter()
@@ -571,17 +570,13 @@ const handleVerify = async () => {
  * 邮箱验证
  */
 const verifyByEmail = async () => {
-  // 获取设备指纹
-  const deviceFingerprint = await getDeviceFingerprint()
-  
   // 构建请求头
   const headers = new Headers({
-    'Content-Type': 'application/json',
-    'X-Device-Fingerprint': deviceFingerprint
+    'Content-Type': 'application/json'
   })
   
-  // 添加客户端信息
-  addClientInfoToHeaders(headers)
+  // 添加所有请求头（设备信息 + 设备指纹 + IP）
+  await addAllRequestHeaders(headers)
   
   const response = await fetch(AUTH_API.VERIFY_EMAIL, {
     method: 'POST',
@@ -601,15 +596,12 @@ const verifyByEmail = async () => {
  * 手机验证
  */
 const verifyByPhone = async () => {
-  // 获取设备指纹
-  const deviceFingerprint = await getDeviceFingerprint()
-  
   const headers = new Headers({
-    'Content-Type': 'application/json',
-    'X-Device-Fingerprint': deviceFingerprint
+    'Content-Type': 'application/json'
   })
   
-  addClientInfoToHeaders(headers)
+  // 添加所有请求头（设备信息 + 设备指纹 + IP）
+  await addAllRequestHeaders(headers)
   
   const response = await fetch(AUTH_API.VERIFY_PHONE, {
     method: 'POST',
@@ -629,18 +621,15 @@ const verifyByPhone = async () => {
  * 密保问题验证
  */
 const verifyBySecurityAnswer = async () => {
-  // 获取设备指纹
-  const deviceFingerprint = await getDeviceFingerprint()
-  
   // 加密答案
   const encryptedAnswer = encryptPassword(verifyForm.value.securityAnswer, rsaPublicKey.value)
   
   const headers = new Headers({
-    'Content-Type': 'application/json',
-    'X-Device-Fingerprint': deviceFingerprint
+    'Content-Type': 'application/json'
   })
   
-  addClientInfoToHeaders(headers)
+  // 添加所有请求头（设备信息 + 设备指纹 + IP）
+  await addAllRequestHeaders(headers)
   
   const response = await fetch(AUTH_API.VERIFY_SECURITY_ANSWER, {
     method: 'POST',

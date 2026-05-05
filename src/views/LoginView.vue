@@ -66,6 +66,7 @@ import { AUTH_API } from '@/config/api'
 import { fetchAllUserInfo } from '@/utils/userInfo'
 import { showSuccess, showError } from '@/utils/toast'
 import { clearSessionId } from '@/utils/sessionId'
+import { addAllRequestHeaders } from '@/utils/requestHeaders'
 
 const logger = createLogger('LoginView')
 
@@ -152,12 +153,19 @@ const handleLogin = async () => {
 
     logger.info('发送登录请求:', loginData)
 
+    // 构建请求头
+    const headers = new Headers({
+      'Content-Type': 'application/json'
+    })
+    
+    // 添加所有请求头（设备信息 + 设备指纹 + IP）
+    await addAllRequestHeaders(headers)
+
     // 发送POST请求到后端
     const response = await fetch(AUTH_API.LOGIN, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      credentials: 'include',
+      headers: headers,
       body: JSON.stringify(loginData)
     })
 
