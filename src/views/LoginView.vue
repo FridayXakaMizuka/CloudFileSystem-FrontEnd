@@ -174,7 +174,40 @@ const handleLogin = async () => {
 
     // 按照后端响应格式处理：code=200 且 success=true 表示成功
     if (response.ok && result.code === 200 && result.success === true) {
-      // 登录成功，保存 JWT 令牌和用户信息
+      // 检查是否需要二次验证
+      if (result.requiresTwoFactor === true) {
+        logger.info('需要二次验证，跳转到二次验证页面')
+        logger.info('用户信息:', {
+          userId: result.userId,
+          email: result.email,
+          phone: result.phone,
+          securityQuestion: result.securityQuestion
+        })
+        
+        // 清除 Cookie 中的 RSA 公钥（但保留 sessionId 用于二次验证）
+        deleteCookie('rsaPublicKey')
+        // 注意：不清除 sessionId，二次验证需要使用
+        
+        // 跳转到二次验证页面，传递必要信息
+        router.push({
+          path: '/two-factor-auth',
+          state: {
+            userInfo: {
+              userId: result.userId,
+              email: result.email || '',
+              phone: result.phone || ''
+            },
+            securityQuestion: result.securityQuestion || '',
+            securityQuestionId: result.securityQuestionId || null,
+            sessionId: sessionId.value
+          }
+        })
+        
+        showSuccess(result.message || '需要进行二次验证')
+        return
+      }
+      
+      // 直接登录成功，保存 JWT 令牌和用户信息
       const userInfo = {
         userId: result.userId,
         nickname: result.nickname,
