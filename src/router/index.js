@@ -5,6 +5,7 @@ import DashboardView from '../views/DashboardView.vue'
 import ProfileEditView from '../views/ProfileEditView.vue'
 import EditFieldView from '../views/EditFieldView.vue'
 import ResetPasswordView from '../views/ResetPasswordView.vue'
+import TwoFactorAuthView from '../views/TwoFactorAuthView.vue'
 import { isLoggedIn } from '@/utils/auth'
 
 const router = createRouter({
@@ -42,6 +43,11 @@ const router = createRouter({
             path: '/reset-password',
             name: 'resetPassword',
             component: ResetPasswordView
+        },
+        {
+            path: '/two-factor-auth',
+            name: 'twoFactorAuth',
+            component: TwoFactorAuthView
         },
         {
             path: '/:pathMatch(.*)*',
