@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "echo 'HTTPS 服务器会自动启动（如果证书存在）' && vite",
     "build": "vite build",
     "preview": "vite preview"
   },

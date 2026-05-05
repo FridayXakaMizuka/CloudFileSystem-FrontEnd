@@ -1,10 +1,18 @@
 /**
  * API 配置
  * 统一管理后端接口地址
+ * 
+ * 注意：开发环境下使用相对路径，通过 Vite 代理转发到后端
+ * 生产环境下需要配置完整的后端地址
  */
 
+// 检测是否为开发环境
+const isDev = import.meta.env.DEV
+
 // 基础 API 地址
-export const BASE_API_URL = 'http://localhost:8835'
+// 开发环境：使用相对路径，通过 Vite 代理
+// 生产环境：使用完整 URL
+export const BASE_API_URL = isDev ? '' : 'http://localhost:8835'
 
 // 认证相关接口
 export const AUTH_API = {
