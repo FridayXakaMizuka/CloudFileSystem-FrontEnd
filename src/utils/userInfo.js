@@ -64,6 +64,7 @@ export const fetchAllUserInfo = async () => {
         nickname: data.nickname || '',
         email: data.email || '',
         phone: data.phone || '',
+        securityQuestion: data.securityQuestion || '',  // ✅ 密保问题（驼峰命名）
         storageUsed: data.storage_used !== undefined 
           ? `${(parseFloat(data.storage_used) / (1024 * 1024 * 1024)).toFixed(2)} GB`
           : '0 GB',
