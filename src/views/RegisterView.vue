@@ -34,15 +34,18 @@
                 type="text"
                 id="nickname"
                 v-model="registerForm.nickname"
-                placeholder="请输入昵称"
+                placeholder="请输入昵称（字母开头，只含字母、数字和下划线）"
                 required
                 autocomplete="nickname"
             />
+            <p v-if="registerForm.nickname && !isValidNickname(registerForm.nickname)" class="error-message">
+              昵称必须以字母开头，只含数字、字母和下划线
+            </p>
           </div>
 
-          <!-- 邮箱输入 -->
+          <!-- 邮箱和验证码输入 -->
           <div class="form-group">
-            <label for="email">
+            <label>
               <span class="label-icon">📧</span>
               邮箱地址
             </label>
@@ -55,12 +58,31 @@
                 autocomplete="email"
                 @blur="handleEmailBlur"
             />
+            <div class="verification-row">
+              <input
+                  type="text"
+                  id="verificationCode"
+                  v-model="registerForm.verificationCode"
+                  placeholder="请输入验证码"
+                  required
+                  maxlength="6"
+                  class="verification-code-input"
+              />
+              <button 
+                type="button" 
+                class="btn-verify-code" 
+                :disabled="!isEmailValid || isSendingCode || countdownTimer.isRunning()"
+                @click="handleSendVerificationCode"
+              >
+                {{ isSendingCode ? '发送中...' : (countdownTimer.isRunning() ? `${emailCountdownRemaining}s` : '发送验证码') }}
+              </button>
+            </div>
             <p v-if="emailError" class="error-message">{{ emailError }}</p>
           </div>
 
           <!-- 手机号输入 -->
           <div class="form-group">
-            <label for="phone">
+            <label>
               <span class="label-icon">📱</span>
               手机号
             </label>
@@ -68,12 +90,30 @@
                 type="tel"
                 id="phone"
                 v-model="registerForm.phone"
-                placeholder="请输入手机号"
-                required
+                placeholder="请输入手机号（可选）"
                 autocomplete="tel"
                 maxlength="11"
                 @blur="handlePhoneBlur"
             />
+            <div class="verification-row">
+              <input
+                  type="text"
+                  id="phoneVerificationCode"
+                  v-model="registerForm.phoneVerificationCode"
+                  placeholder="请输入验证码"
+                  :required="!!registerForm.phone && registerForm.phone.trim() !== ''"
+                  maxlength="6"
+                  class="verification-code-input"
+              />
+              <button 
+                type="button" 
+                class="btn-verify-code" 
+                :disabled="!isPhoneValid || isSendingPhoneCode || phoneCountdownTimer.isRunning()"
+                @click="handleSendPhoneVerificationCode"
+              >
+                {{ isSendingPhoneCode ? '发送中...' : (phoneCountdownTimer.isRunning() ? `${phoneCountdownRemaining}s` : '发送验证码') }}
+              </button>
+            </div>
             <p v-if="phoneError" class="error-message">{{ phoneError }}</p>
           </div>
 
@@ -87,7 +127,7 @@
                 type="password"
                 id="password"
                 v-model="registerForm.password"
-                placeholder="请输入密码（6-14位，仅由数字、字母和下划线构成）"
+                placeholder="请输入密码（6-14位）"
                 required
                 minlength="6"
                 maxlength="14"
@@ -161,9 +201,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { getValidatedRSAKey, fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
+import { createLogger } from '@/utils/logger'
+import { deleteCookie } from '@/utils/cookie'
+import { AUTH_API } from '@/config/api'
+import { sendVerificationCode, CountdownTimer } from '@/utils/email'
+import { sendPhoneVerificationCode } from '@/utils/phone'
+import { showSuccess, showError } from '@/utils/toast'
+import { clearSessionId, isValidNickname, isValidPasswordLength, validatePhone } from '@/utils/sessionId'
+
+const logger = createLogger('RegisterView')
 
 // 路由实例
 const router = useRouter()
@@ -173,10 +222,12 @@ const registerForm = ref({
   nickname: '',
   email: '',
   phone: '',
+  phoneVerificationCode: '',  // 手机号验证码
   password: '',
   confirmPassword: '',
   securityQuestion: '',
-  securityAnswer: ''
+  securityAnswer: '',
+  verificationCode: ''  // 邮箱验证码
 })
 
 // 加载状态
@@ -200,6 +251,18 @@ const confirmPasswordBlurred = ref(false)    // 确认密码框是否已失焦
 // 邮箱和手机号失焦状态标记
 const emailBlurred = ref(false)
 const phoneBlurred = ref(false)
+
+// 邮箱验证码相关
+const isSendingCode = ref(false)  // 是否正在发送邮箱验证码
+const verificationSessionId = ref('')  // 邮箱验证码会话 ID
+const countdownTimer = new CountdownTimer(60)  // 邮箱验证码60秒倒计时
+const emailCountdownRemaining = ref(0)  // ✅ 邮箱倒计时剩余时间（响应式）
+
+// 手机号验证码相关
+const isSendingPhoneCode = ref(false)  // 是否正在发送手机验证码
+const phoneVerificationSessionId = ref('')  // 手机验证码会话 ID
+const phoneCountdownTimer = new CountdownTimer(60)  // 手机验证码60秒倒计时
+const phoneCountdownRemaining = ref(0)  // ✅ 手机倒计时剩余时间（响应式）
 
 /**
  * 密码框失焦处理
@@ -243,6 +306,100 @@ const handleEmailBlur = () => {
  */
 const handlePhoneBlur = () => {
   phoneBlurred.value = true
+}
+
+/**
+ * 处理发送邮箱验证码
+ */
+const handleSendVerificationCode = async () => {
+  // 验证邮箱格式
+  if (!isEmailValid.value) {
+    showError('请输入有效的邮箱地址')
+    return
+  }
+
+  isSendingCode.value = true
+
+  try {
+    logger.info('开始发送邮箱验证码...')
+
+    // 调用发送验证码接口（已自动携带 sessionId）
+    const result = await sendVerificationCode(registerForm.value.email)
+
+    if (result.success) {
+      logger.info('验证码发送成功')
+
+      // 显示成功消息
+      showSuccess(result.message || '邮箱验证码已发送')
+
+      // 启动倒计时
+      countdownTimer.start(
+        (remaining) => {
+          logger.debug(`倒计时: ${remaining}s`)
+          emailCountdownRemaining.value = remaining
+        },
+        () => {
+          logger.info('倒计时结束，可以重新发送验证码')
+          emailCountdownRemaining.value = 0
+        }
+      )
+    } else {
+      // 显示错误消息
+      showError(result.message || '邮箱验证码发送失败')
+    }
+  } catch (error) {
+    logger.error('发送验证码异常:', error)
+    showError('网络错误，请稍后重试')
+  } finally {
+    isSendingCode.value = false
+  }
+}
+
+/**
+ * 处理发送手机验证码
+ */
+const handleSendPhoneVerificationCode = async () => {
+  // 验证手机号格式
+  if (!isPhoneValid.value) {
+    showError('请输入有效的11位手机号')
+    return
+  }
+
+  isSendingPhoneCode.value = true
+
+  try {
+    logger.info('开始发送手机验证码...')
+
+    // 调用发送验证码接口（已自动携带 sessionId）
+    const result = await sendPhoneVerificationCode(registerForm.value.phone)
+
+    if (result.success) {
+      logger.info('手机验证码发送成功')
+
+      // 显示成功消息
+      showSuccess(result.message || '手机验证码已发送')
+
+      // 启动倒计时
+      phoneCountdownTimer.start(
+        (remaining) => {
+          logger.debug(`手机验证码倒计时: ${remaining}s`)
+          phoneCountdownRemaining.value = remaining
+        },
+        () => {
+          logger.info('手机验证码倒计时结束，可以重新发送')
+          phoneCountdownRemaining.value = 0
+        }
+      )
+    } else {
+      // 显示错误消息
+      showError(result.message || '手机验证码发送失败')
+    }
+  } catch (error) {
+    logger.error('发送手机验证码异常:', error)
+    showError('网络错误，请稍后重试')
+  } finally {
+    isSendingPhoneCode.value = false
+  }
 }
 
 /**
@@ -299,6 +456,15 @@ const emailError = computed(() => {
 })
 
 /**
+ * 计算属性：邮箱是否有效（用于控制发送验证码按钮）
+ */
+const isEmailValid = computed(() => {
+  if (!registerForm.value.email) return false
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(registerForm.value.email)
+})
+
+/**
  * 计算属性：验证手机号格式
  */
 const phoneError = computed(() => {
@@ -312,24 +478,59 @@ const phoneError = computed(() => {
 })
 
 /**
+ * 计算属性：手机号是否有效（用于控制发送验证码按钮）
+ */
+const isPhoneValid = computed(() => {
+  if (!registerForm.value.phone) return false
+  const phoneRegex = /^1[3-9]\d{9}$/
+  return phoneRegex.test(registerForm.value.phone)
+})
+
+/**
  * 计算属性：表单是否有效
  */
 const isFormValid = computed(() => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   const phoneRegex = /^1[3-9]\d{9}$/
   
-  return registerForm.value.nickname &&
-      registerForm.value.email &&
-      registerForm.value.phone &&
-      registerForm.value.password &&
-      registerForm.value.confirmPassword &&
-      registerForm.value.securityQuestion &&
-      registerForm.value.securityAnswer &&
-      registerForm.value.password === registerForm.value.confirmPassword &&
-      registerForm.value.password.length >= 6 &&
-      registerForm.value.password.length <= 14 &&
-      emailRegex.test(registerForm.value.email) &&
-      phoneRegex.test(registerForm.value.phone)
+  // 基本字段验证
+  const nicknameValid = registerForm.value.nickname && isValidNickname(registerForm.value.nickname)
+  const emailValid = registerForm.value.email && emailRegex.test(registerForm.value.email)
+  const passwordValid = registerForm.value.password && 
+                       registerForm.value.confirmPassword && 
+                       registerForm.value.password === registerForm.value.confirmPassword &&
+                       isValidPasswordLength(registerForm.value.password)
+  const securityValid = registerForm.value.securityQuestion && registerForm.value.securityAnswer
+  const emailCodeValid = registerForm.value.verificationCode
+  
+  const basicFieldsValid = nicknameValid && emailValid && passwordValid && securityValid && emailCodeValid
+  
+  if (!basicFieldsValid) {
+    logger.debug('表单验证失败 - 基本字段:', {
+      nicknameValid,
+      emailValid,
+      passwordValid,
+      securityValid,
+      emailCodeValid
+    })
+    return false
+  }
+  
+  // 如果填写了手机号，则必须填写手机验证码且格式正确
+  if (registerForm.value.phone && registerForm.value.phone.trim() !== '') {
+    const phoneFormatValid = phoneRegex.test(registerForm.value.phone)
+    const phoneCodeValid = registerForm.value.phoneVerificationCode && registerForm.value.phoneVerificationCode.length > 0
+    
+    if (!phoneFormatValid || !phoneCodeValid) {
+      logger.debug('表单验证失败 - 手机号相关:', { phoneFormatValid, phoneCodeValid })
+    }
+    
+    return phoneFormatValid && phoneCodeValid
+  }
+  
+  // 如果未填写手机号，则不需要手机验证码
+  logger.debug('表单验证通过')
+  return true
 })
 
 /**
@@ -337,52 +538,40 @@ const isFormValid = computed(() => {
  */
 const fetchSecurityQuestions = async () => {
   try {
-    const response = await fetch('http://localhost:8835/api/auth/security-questions')
+    const response = await fetch(AUTH_API.SECURITY_QUESTIONS)
     const data = await response.json()
     
     if (data.success && data.code === 200) {
-      console.log('获取安全问题成功:', data.questions)
+      logger.info('获取安全问题成功:', data.questions)
       securityQuestions.value = data.questions || []
     } else {
-      console.error('获取安全问题失败:', data.message)
+      logger.error('获取安全问题失败:', data.message)
       alert('获取安全问题失败，请刷新页面重试')
     }
   } catch (error) {
-    console.error('请求安全问题接口出错:', error)
+    logger.error('请求安全问题接口出错:', error)
     alert('网络错误，无法获取安全问题')
   }
 }
 
 /**
- * 初始化RSA密钥（优先从Cookie验证，失败则重新获取）
+ * 初始化RSA密钥（直接获取新公钥）
  */
 const initRSAKey = async () => {
   try {
-    console.log('注册页面：开始初始化RSA密钥...')
+    logger.info('开始初始化RSA密钥...')
     
-    // 1. 尝试从Cookie读取并验证
-    const validatedKey = await getValidatedRSAKey()
+    // 直接调用 /auth/rsa-key 获取新公钥（后端不进行有效性校验）
+    const keyData = await fetchRSAKey()
+    rsaPublicKey.value = keyData.publicKey
+    sessionId.value = keyData.sessionId
+    logger.info('RSA密钥初始化成功')
     
-    if (validatedKey) {
-      // 验证成功，使用Cookie中的密钥
-      rsaPublicKey.value = validatedKey.publicKey
-      sessionId.value = validatedKey.sessionId
-      console.log('注册页面：使用Cookie中验证通过的RSA密钥')
-    } else {
-      // 验证失败，重新获取密钥
-      console.log('注册页面：Cookie验证失败，重新获取RSA密钥')
-      const keyData = await fetchRSAKey()
-      rsaPublicKey.value = keyData.publicKey
-      sessionId.value = keyData.sessionId
-      console.log('注册页面：已获取新的RSA密钥')
-    }
-    
-    console.log('注册页面：RSA密钥初始化完成')
-    console.log('注册页面：公钥:', rsaPublicKey.value.substring(0, 50) + '...')
-    console.log('注册页面：会话ID:', sessionId.value)
+    logger.debug('公钥:', rsaPublicKey.value.substring(0, 50) + '...')
+    logger.debug('会话ID:', sessionId.value)
   } catch (error) {
-    console.error('注册页面：RSA密钥初始化失败:', error)
-    alert('系统初始化失败：无法获取RSA密钥\n\n可能原因：\n1. 后端服务未启动（localhost:8835）\n2. 网络连接问题\n3. CORS跨域配置问题\n\n请检查后端服务是否正常运行')
+    logger.error('RSA密钥初始化失败:', error)
+    showError('系统初始化失败：无法获取RSA密钥。请检查后端服务是否正常运行')
   }
 }
 
@@ -390,7 +579,7 @@ const initRSAKey = async () => {
  * 处理返回登录页面
  */
 const handleBackToLogin = () => {
-  console.log('注册页面：返回登录页面')
+  logger.info('返回登录页面')
   router.push('/login')
 }
 
@@ -399,13 +588,13 @@ const handleBackToLogin = () => {
  */
 const handleRegister = async () => {
   if (!isFormValid.value) {
-    alert('请填写完整的注册信息')
+    showError('请填写完整的注册信息')
     return
   }
 
   // 检查是否已获取公钥和会话ID
   if (!rsaPublicKey.value || !sessionId.value) {
-    alert('系统初始化未完成，请稍后重试')
+    showError('系统初始化未完成，请稍后重试')
     return
   }
 
@@ -415,14 +604,16 @@ const handleRegister = async () => {
     // 使用RSA加密密码
     const encryptedPassword = encryptPassword(registerForm.value.password, rsaPublicKey.value)
 
-    // 构造请求数据
+    // 构造请求数据（按照新接口格式）
     const registerData = {
-      sessionId: sessionId.value,
+      sessionId: sessionId.value,  // 前端生成的 sessionId
       data: [
         {
           nickname: registerForm.value.nickname,
           email: registerForm.value.email,
-          phone: registerForm.value.phone,
+          emailVfCode: registerForm.value.verificationCode,  // 邮箱验证码
+          phone: registerForm.value.phone || '',  // 手机号（可选，空字符串表示未填写）
+          phoneVfCode: registerForm.value.phoneVerificationCode || '',  // 手机验证码（可选）
           encryptedPassword: encryptedPassword,
           securityQuestion: parseInt(registerForm.value.securityQuestion),
           securityAnswer: registerForm.value.securityAnswer
@@ -430,10 +621,10 @@ const handleRegister = async () => {
       ]
     }
 
-    console.log('发送注册请求:', registerData)
+    logger.info('发送注册请求:', registerData)
 
     // 发送POST请求到后端
-    const response = await fetch('http://localhost:8835/api/auth/register', {
+    const response = await fetch(AUTH_API.REGISTER, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -442,30 +633,49 @@ const handleRegister = async () => {
     })
 
     const result = await response.json()
-    console.log('注册响应:', result)
+    logger.info('注册响应:', result)
 
     // 按照后端响应格式处理：code=200 且 success=true 表示成功
     if (response.ok && result.code === 200 && result.success === true) {
       // 注册成功
       const userData = result.data && result.data[0]
       
+      // 构造注册成功信息
+      let successMessage = '✅ 注册成功！\n\n'
+      
       if (userData) {
-        // 显示用户信息
-        const message = `注册成功！\n\n用户ID: ${userData.id}\n用户名: ${userData.nickname}\n密码: ${registerForm.value.password}`
-        alert(message)
+        successMessage += `用户ID: ${userData.id}\n`
+        successMessage += `昵称: ${userData.nickname}\n`
       } else {
-        alert(result.message || '注册成功！')
+        successMessage += `昵称: ${registerForm.value.nickname}\n`
       }
+      
+      successMessage += `邮箱: ${registerForm.value.email}\n`
+      
+      if (registerForm.value.phone) {
+        successMessage += `手机号: ${registerForm.value.phone}\n`
+      }
+      
+      successMessage += `密码: ${registerForm.value.password}\n\n`
+      successMessage += '请妥善保管您的账号信息！'
+      
+      // 使用 alert 显示注册信息
+      alert(successMessage)
+
+      // 清除 Cookie 中的 RSA 密钥和 sessionId
+      deleteCookie('rsaPublicKey')
+      clearSessionId()
+      logger.info('已清除 Cookie 中的 RSA 密钥和 sessionId')
 
       // 跳转到登录页面
       router.push('/login')
     } else {
       // 注册失败，显示错误信息
-      alert(result.message || '注册失败，请稍后重试')
+      showError(result.message || '注册失败，请稍后重试')
     }
   } catch (error) {
-    console.error('注册请求失败:', error)
-    alert('网络错误，请稍后重试')
+    logger.error('注册请求失败:', error)
+    showError('网络错误，请稍后重试')
   } finally {
     isLoading.value = false
   }
@@ -478,6 +688,13 @@ onMounted(() => {
   
   // 从Cookie读取并验证RSA密钥
   initRSAKey()
+})
+
+// 组件卸载时清理定时器
+onBeforeUnmount(() => {
+  countdownTimer.destroy()
+  phoneCountdownTimer.destroy()
+  logger.info('已销毁验证码倒计时定时器')
 })
 </script>
 
@@ -655,6 +872,46 @@ onMounted(() => {
   outline: none; /* 移除默认轮廓 */
   border-color: #667eea; /* 边框变为紫色 */
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); /* 紫色光晕 */
+}
+
+/* 验证码行（验证码输入框 + 发送按钮） */
+.verification-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+/* 验证码输入框 */
+.verification-code-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 发送验证码按钮 */
+.btn-verify-code {
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.btn-verify-code:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-verify-code:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #ccc;
 }
 
 /* 错误提示信息 */

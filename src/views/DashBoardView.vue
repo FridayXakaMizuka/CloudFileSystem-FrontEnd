@@ -108,32 +108,80 @@
 </template>
 
 <script setup>
-import {ref, onMounted, computed, onUnmounted} from 'vue'
-import { useRouter } from 'vue-router'
+import {ref, onMounted, computed, onUnmounted, onActivated} from 'vue'
+import { useRouter, onBeforeRouteUpdate } from 'vue-router'
 import BrowseView from './BrowseView.vue'
 import TransferView from './TransferView.vue'
+import { getUserInfo, clearAuthInfo, getToken } from '@/utils/auth'
+import { createLogger } from '@/utils/logger'
+import { getFullAvatarUrl, loadAuthenticatedImage, clearUserInfoCache, getCachedUserInfo } from '@/utils/userInfo'
+
+const logger = createLogger('DashboardView')
 
 const router = useRouter()
-const username = ref('')
 const currentView = ref('browse')
 const showInfoModal = ref(false)
 const userAvatar = ref('')
 const sidebarOpen = ref(false)
 
 /**
+ * 响应式变量：用于触发重新渲染
+ */
+const refreshTrigger = ref(0)
+
+/**
+ * 获取用户名（每次访问都从缓存中实时读取）
+ */
+const getUsername = () => {
+  // ✅ 通过访问 trigger 来强制 Vue 追踪依赖
+  void refreshTrigger.value
+  
+  const cachedUserInfo = getCachedUserInfo()
+  return cachedUserInfo?.nickname || '用户'
+}
+
+/**
+ * 计算属性：用户名（自动响应缓存变化）
+ */
+const username = computed(() => getUsername())
+
+/**
+ * 刷新用户名显示（触发重新计算）
+ */
+const refreshUsername = () => {
+  refreshTrigger.value++
+  logger.info('刷新用户名显示')
+}
+
+/**
+ * 更新用户名（从后端获取最新数据并刷新显示）
+ */
+const updateUsername = async () => {
+  try {
+    // ✅ 强制从后端获取最新用户信息
+    await getUserInfo(true)
+    // 获取成功后，触发重新读取缓存
+    refreshUsername()
+  } catch (error) {
+    logger.error('获取用户信息失败:', error)
+  }
+}
+
+/**
  * 处理头像点击事件
  */
 const handleAvatarClick = () => {
   // 可以在这里添加头像点击逻辑
-  console.log('头像被点击')
+  logger.debug('头像被点击')
 }
 
 /**
  * 计算属性：获取头像显示的字母（昵称首字符）
  */
 const avatarLetter = computed(() => {
-  if (!username.value) return 'U'
-  return username.value.charAt(0).toUpperCase()
+  const name = username.value
+  if (!name) return 'U'
+  return name.charAt(0).toUpperCase()
 })
 
 /**
@@ -145,12 +193,14 @@ const avatarColor = computed(() => {
     '#4facfe', '#00f2fe', '#43e97b', '#fa709a',
     '#fee140', '#30cfd0', '#a8edea', '#ff9a9e'
   ]
-  if (!username.value) return colors[0]
+  
+  const name = username.value
+  if (!name) return colors[0]
 
   // 根据用户名的字符编码总和选择颜色
   let hash = 0
-  for (let i = 0; i < username.value.length; i++) {
-    hash = username.value.charCodeAt(i) + ((hash << 5) - hash)
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
   }
   return colors[Math.abs(hash) % colors.length]
 })
@@ -245,42 +295,122 @@ const closeUserInfo = () => {
 }
 
 const handleImageError = () => {
-  console.warn('头像加载失败，使用默认头像')
+  logger.warn('头像加载失败，使用默认头像')
   userAvatar.value = ''  // 清空头像，自动回退到默认头像
 }
 
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
-    localStorage.removeItem('isLoggedIn')
-    localStorage.removeItem('username')
-    localStorage.removeItem('userAvatar')
+    clearAuthInfo()
+    clearUserInfoCache()  // 清除用户信息缓存（包括头像）
     router.push('/login')
   }
 }
 
-onMounted(() => {
-  const savedUsername = localStorage.getItem('username')
-  const savedAvatar = localStorage.getItem('userAvatar')
-  if (savedUsername) {
-    username.value = savedUsername
-  } else {
+onMounted(async () => {
+  const userInfo = getUserInfo()
+  if (!userInfo) {
     router.push('/login')
+    return
   }
-
+  
+  // ✅ 初始化用户名（从后端获取最新数据）
+  await updateUsername()
+  
   // 加载用户头像
-  if (savedAvatar) {
-    userAvatar.value = savedAvatar
-  }
+  await loadUserAvatar()
 
   // 添加触摸事件监听器
   document.addEventListener('touchstart', handleTouchStart, { passive: true })
   document.addEventListener('touchend', handleTouchEnd, { passive: true })
+  
+  // ✅ 添加 visibilitychange 事件监听器，当页面重新可见时更新用户名
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
+
+/**
+ * 路由更新时刷新用户名（当从 ProfileEditView 返回时触发）
+ */
+onBeforeRouteUpdate(async (to, from, next) => {
+  logger.info('路由更新，刷新用户名')
+  await updateUsername()
+  next()
+})
+
+/**
+ * 组件激活时刷新用户名（配合 keep-alive 使用）
+ */
+onActivated(async () => {
+  logger.info('组件激活，刷新用户名')
+  await updateUsername()
+  refreshUsername()  // ✅ 触发刷新
+})
+
+/**
+ * 处理页面可见性变化（当从其他页面返回时更新用户名）
+ */
+const handleVisibilityChange = async () => {
+  if (document.visibilityState === 'visible') {
+    logger.info('页面重新可见，更新用户名')
+    await updateUsername()
+    refreshUsername()  // ✅ 触发刷新
+  }
+}
+
+/**
+ * 加载用户头像（从缓存的用户信息中获取）
+ */
+const loadUserAvatar = async () => {
+  try {
+    // 从 sessionStorage 缓存中获取用户信息
+    const cachedUserInfo = getCachedUserInfo()
+    
+    if (!cachedUserInfo) {
+      logger.warn('未找到缓存的用户信息')
+      userAvatar.value = ''
+      return
+    }
+    
+    logger.info('从缓存加载用户头像...')
+    
+    // 如果有头像信息，加载头像
+    if (cachedUserInfo.avatar) {
+      // 获取完整的头像 URL
+      const fullUrl = getFullAvatarUrl(cachedUserInfo.avatar)
+      
+      // 尝试加载需要认证的头像图片
+      const blobUrl = await loadAuthenticatedImage(fullUrl)
+      if (blobUrl) {
+        userAvatar.value = blobUrl
+        logger.info('头像加载成功', blobUrl)
+      } else {
+        // 如果加载失败，使用完整 URL
+        userAvatar.value = fullUrl
+        logger.warn('Blob 加载失败，使用原始 URL')
+      }
+    } else {
+      logger.info('未找到头像，使用默认头像')
+      userAvatar.value = ''
+    }
+  } catch (error) {
+    logger.error('加载头像失败:', error)
+    userAvatar.value = ''
+  }
+}
 
 onUnmounted(() => {
   // 移除触摸事件监听器
   document.removeEventListener('touchstart', handleTouchStart)
   document.removeEventListener('touchend', handleTouchEnd)
+  
+  // ✅ 移除 visibilitychange 事件监听器
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  
+  // 清理 Blob URL，避免内存泄漏
+  if (userAvatar.value && userAvatar.value.startsWith('blob:')) {
+    URL.revokeObjectURL(userAvatar.value)
+    logger.debug('已清理头像 Blob URL')
+  }
 });
 </script>
 

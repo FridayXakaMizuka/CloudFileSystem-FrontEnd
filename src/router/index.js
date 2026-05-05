@@ -1,8 +1,11 @@
-﻿import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import ProfileEditView from '../views/ProfileEditView.vue'
+import EditFieldView from '../views/EditFieldView.vue'
+import ResetPasswordView from '../views/ResetPasswordView.vue'
+import { isLoggedIn } from '@/utils/auth'
 
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
@@ -30,6 +33,17 @@ const router = createRouter({
             meta: { requiresAuth: true }
         },
         {
+            path: '/profile/edit',
+            name: 'editField',
+            component: EditFieldView,
+            meta: { requiresAuth: true }
+        },
+        {
+            path: '/reset-password',
+            name: 'resetPassword',
+            component: ResetPasswordView
+        },
+        {
             path: '/:pathMatch(.*)*',
             redirect: '/login'
         }
@@ -43,15 +57,15 @@ const router = createRouter({
  * @returns {string|undefined} 返回重定向路径或 undefined（允许导航）
  */
 router.beforeEach((to, from) => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true'
+    const authenticated = isLoggedIn()
 
     // 如果访问需要认证的页面但未登录，重定向到登录页
-    if (to.meta.requiresAuth && !isLoggedIn) {
+    if (to.meta.requiresAuth && !authenticated) {
         return '/login'
     }
 
     // 如果已登录用户访问登录页或注册页，重定向到首页
-    if (isLoggedIn && (to.path === '/login' || to.path === '/register')) {
+    if (authenticated && (to.path === '/login' || to.path === '/register')) {
         return '/'
     }
 

@@ -34,3 +34,125 @@ a,
     padding: 0;
   }
 }
+
+/* ============================================
+   Toast 消息提示样式（Element UI 风格）
+   ============================================ */
+
+.app-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  min-width: 320px;
+  max-width: 500px;
+  padding: 15px 20px;
+  border-radius: 4px;
+  border: 1px solid;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+
+.app-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.app-toast.hide {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-100%);
+}
+
+/* 成功消息 - Element UI 绿色系 */
+.app-toast.success {
+  background-color: #f0f9eb;
+  border-color: #e1f3d8;
+  color: #67c23a;
+}
+
+/* 错误消息 - Element UI 红色系 */
+.app-toast.error {
+  background-color: #fef0f0;
+  border-color: #fde2e2;
+  color: #f56c6c;
+}
+
+/* 信息消息 - Element UI 蓝色系 */
+.app-toast.info {
+  background-color: #f4f4f5;
+  border-color: #e9e9eb;
+  color: #909399;
+}
+
+/* 警告消息 - Element UI 黄色系 */
+.app-toast.warning {
+  background-color: #fdf6ec;
+  border-color: #faecd8;
+  color: #e6a23c;
+}
+
+/* 图标（Emoji） */
+.toast-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* 消息文本 */
+.toast-message {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  word-wrap: break-word;
+  color: inherit;
+}
+
+/* 关闭按钮 */
+.toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .app-toast {
+    min-width: calc(100vw - 40px);
+    max-width: calc(100vw - 40px);
+    left: 20px;
+    transform: translateY(-100%);
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+
+  .app-toast.show {
+    transform: translateY(0);
+  }
+
+  .app-toast.hide {
+    transform: translateY(-100%);
+  }
+}

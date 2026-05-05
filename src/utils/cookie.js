@@ -3,6 +3,10 @@
  * 提供设置、读取、删除 Cookie 的功能
  */
 
+import { createLogger } from './logger'
+
+const logger = createLogger('Cookie')
+
 /**
  * 设置 Cookie
  * @param {string} name - Cookie 名称
@@ -14,7 +18,7 @@ export const setCookie = (name, value, days = 7) => {
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
   // localhost 环境下使用 Lax，生产环境建议改为 None;Secure
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
-  console.log(`✅ Cookie 已设置: ${name}`)
+  logger.debug('Cookie 已设置:', name)
 }
 
 /**
@@ -39,7 +43,7 @@ export const getCookie = (name) => {
  */
 export const deleteCookie = (name) => {
   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
-  console.log(`🗑️ Cookie 已删除: ${name}`)
+  logger.debug('Cookie 已删除:', name)
 }
 
 /**
@@ -61,7 +65,7 @@ export const getRSAPublicKeyFromCookie = () => {
       // 解码 URI 编码的公钥
       return decodeURIComponent(publicKey)
     } catch (error) {
-      console.error('❌ 解码 RSA 公钥失败:', error)
+      logger.error('解码 RSA 公钥失败:', error)
       return null
     }
   }
