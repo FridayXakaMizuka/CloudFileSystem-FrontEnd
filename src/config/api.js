@@ -37,6 +37,15 @@ export const AUTH_API = {
   // 发送手机号验证码
   SEND_PHONE_VERIFICATION_CODE: `${BASE_API_URL}/auth/vfcode/phone`,
   
+  // 二次验证 - 邮箱验证码验证
+  VERIFY_EMAIL: `${BASE_API_URL}/auth/verify/email`,
+  
+  // 二次验证 - 手机验证码验证
+  VERIFY_PHONE: `${BASE_API_URL}/auth/verify/phone`,
+  
+  // 二次验证 - 密保问题验证
+  VERIFY_SECURITY_ANSWER: `${BASE_API_URL}/auth/verify/security_answer`,
+  
   // 重置密码 - 查找用户
   RESET_PASSWORD_FIND_USER: `${BASE_API_URL}/auth/reset_password/find_user`,
   
