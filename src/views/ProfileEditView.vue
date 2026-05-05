@@ -51,6 +51,14 @@
             </button>
             <button
                 class="tab-item"
+                :class="{ active: activeTab === 'security' }"
+                @click="scrollToSection('security')"
+            >
+              <span class="tab-icon">❓</span>
+              <span class="tab-text">密保问题</span>
+            </button>
+            <button
+                class="tab-item"
                 :class="{ active: activeTab === 'info' }"
                 @click="scrollToSection('info')"
             >
@@ -395,6 +403,74 @@
             </div>
           </div>
 
+          <!-- 密保问题 -->
+          <div id="section-security" :class="['tab-pane', { 'active': activeTab === 'security' }, { 'highlighted': highlightedSection === 'security' }]">
+            <div class="content-card">
+              <h2 class="card-title">
+                <span class="icon">❓</span>
+                密保问题
+              </h2>
+              
+              <!-- 密保问题编辑模式 -->
+              <div v-if="editingFields.has('security')" class="edit-mode">
+                <div class="form-group">
+                  <label for="security-question-select">
+                    <span class="label-icon">❓</span>
+                    选择密保问题
+                  </label>
+                  <select
+                      id="security-question-select"
+                      v-model="editForm.securityQuestionId"
+                      class="security-question-select"
+                  >
+                    <option value="">请选择密保问题</option>
+                    <option v-for="question in securityQuestions" :key="question.id" :value="question.id">
+                      {{ question.question }}
+                    </option>
+                  </select>
+                </div>
+                
+                <div class="form-group">
+                  <label for="security-answer-input">
+                    <span class="label-icon">✏️</span>
+                    答案
+                  </label>
+                  <input
+                      type="text"
+                      id="security-answer-input"
+                      v-model="editForm.securityAnswer"
+                      placeholder="请输入密保问题答案"
+                      @input="handleInput('security')"
+                  />
+                </div>
+                
+                <div class="button-group">
+                  <button class="btn btn-cancel" @click="cancelEdit('security')">
+                    取消
+                  </button>
+                  <button class="btn btn-save" @click="saveField('security')" :disabled="isSaving || !isFieldValid('security')">
+                    {{ isSaving ? '保存中...' : '保存' }}
+                  </button>
+                </div>
+              </div>
+              
+              <!-- 密保问题只读模式 -->
+              <div v-if="!editingFields.has('security')" class="info-display-item">
+                <div class="info-label">
+                  <span class="label-icon">❓</span>
+                  密保问题
+                </div>
+                <div class="info-value">
+                  <span>{{ userInfo.securityQuestion || '未设置' }}</span>
+                  <button class="btn-edit" @click="startEdit('security')">
+                    <span class="edit-icon">✏️</span>
+                    修改
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 账号信息 -->
           <div id="section-info" :class="['tab-pane', { 'active': activeTab === 'info' }, { 'highlighted': highlightedSection === 'info' }]">
             <div class="content-card">
@@ -465,7 +541,9 @@ const editForm = ref({
   phoneVerificationCode: '',  // 手机验证码
   oldPassword: '',
   newPassword: '',
-  confirmPassword: ''
+  confirmPassword: '',
+  securityQuestionId: '',  // 密保问题 ID
+  securityAnswer: ''  // 密保答案
 })
 
 // 用户信息（从后端获取）
@@ -473,6 +551,7 @@ const userInfo = ref({
   nickname: '',
   email: '',
   phone: '',
+  securityQuestion: '',  // 密保问题
   registerDate: '',
   accountStatus: '正常',
   storageUsed: '0 GB',
@@ -528,6 +607,10 @@ const isRsaKeyLoading = ref(false)
 // 专用 RSA 密钥（用于邮箱和手机号修改）
 const emailRsaPublicKey = ref('')  // 邮箱修改专用的 RSA 密钥
 const phoneRsaPublicKey = ref('')  // 手机号修改专用的 RSA 密钥
+const securityRsaPublicKey = ref('')  // 密保问题修改专用的 RSA 密钥
+
+// 密保问题列表
+const securityQuestions = ref([])
 
 // 字段编辑相关
 const editingFields = ref(new Set())  // 当前正在编辑的字段集合

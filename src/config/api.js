@@ -136,6 +136,9 @@ export const PROFILE_API = {
   // 修改昵称
   SET_NICKNAME: `${BASE_API_URL}/profile/nickname/set`,
   
+  // 修改密保问题
+  SET_SECURITY_QUESTION: `${BASE_API_URL}/profile/security_question/set`,
+  
   // 获取所有个人信息
   GET_ALL: `${BASE_API_URL}/profile/get_all`
 }
