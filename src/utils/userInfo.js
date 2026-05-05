@@ -31,12 +31,20 @@ export const fetchAllUserInfo = async () => {
     
     logger.info('开始获取所有个人信息...')
     
+    // 构建请求头
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    })
+    
+    // 添加所有请求头（设备信息 + 设备指纹 + IP）
+    const { addAllRequestHeaders } = await import('@/utils/requestHeaders')
+    await addAllRequestHeaders(headers)
+    
     const response = await fetch(PROFILE_API.GET_ALL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
+      credentials: 'include',
+      headers: headers
     })
     
     if (!response.ok) {
