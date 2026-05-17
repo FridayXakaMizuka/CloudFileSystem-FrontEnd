@@ -3,10 +3,22 @@
   <div class="recycle-bin-container">
     <!-- 回收站头部：包含标题、统计信息和搜索框 -->
     <div class="recycle-header">
-      <div class="header-left">
-        <h2 class="title">回收站</h2>
-        <p class="subtitle">已删除的文件将在30天后自动清除</p>
-        <!-- 搜索框区域 -->
+      <!-- 上方区域：标题、注释和清空按钮 -->
+      <div class="header-top">
+        <div class="header-left">
+          <h2 class="title">回收站</h2>
+          <p class="subtitle">已删除的文件将在30天后自动清除</p>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-clear-all" @click="handleClearAll" :disabled="files.length === 0">
+            <span class="icon">🗑️</span>
+            清空回收站
+          </button>
+        </div>
+      </div>
+      
+      <!-- 下方区域：搜索框 -->
+      <div class="header-bottom">
         <div class="search-box">
           <input 
             type="text" 
@@ -20,12 +32,6 @@
             搜索
           </button>
         </div>
-      </div>
-      <div class="header-right">
-        <button class="btn btn-clear-all" @click="handleClearAll" :disabled="files.length === 0">
-          <span class="icon">🗑️</span>
-          清空回收站
-        </button>
       </div>
     </div>
 
@@ -68,7 +74,10 @@
               <td class="col-name">
                 <div class="file-name-cell">
                   <span class="file-name">{{ file.name }}</span>
-                  <span class="file-type-badge">{{ getFileTypeLabel(file.type) }}</span>
+                  <div class="file-meta-info">
+                    <span class="file-type-badge">{{ getFileTypeLabel(file.type) }}</span>
+                    <span class="file-size-inline">· {{ formatFileSize(file.size) }}</span>
+                  </div>
                 </div>
               </td>
               
@@ -307,12 +316,24 @@ onMounted(() => {
 /* 回收站头部：标题和操作按钮（固定不滚动） */
 .recycle-header {
   display: flex; /* 启用 Flexbox 布局 */
-  justify-content: space-between; /* 左右两端对齐 */
-  align-items: center; /* 垂直居中对齐 */
+  flex-direction: column; /* 垂直排列 */
   padding: 1.5rem 2rem; /* 内边距 */
   background: white; /* 白色背景 */
   border-bottom: 2px solid #f0f0f0; /* 底部边框 */
   flex-shrink: 0; /* 不允许缩小 */
+  gap: 1rem; /* 上下区域间距 */
+}
+
+/* 头部上方区域：标题、注释和清空按钮 */
+.header-top {
+  display: flex; /* 启用 Flexbox 布局 */
+  justify-content: space-between; /* 左右两端对齐 */
+  align-items: center; /* 垂直居中对齐 */
+}
+
+/* 头部下方区域：搜索框 */
+.header-bottom {
+  width: 100%; /* 占满宽度 */
 }
 
 /* 头部左侧：标题和副标题 */
@@ -328,17 +349,19 @@ onMounted(() => {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.5rem;
+  width: 100%; /* 占满整个宽度 */
 }
 
 /* 搜索输入框 */
 .search-input {
+  flex: 1; /* 占据剩余空间 */
   padding: 0.6rem 1rem;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 0.9rem;
   outline: none;
   transition: all 0.3s ease;
-  min-width: 250px;
+  min-width: 0; /* 允许缩小 */
 }
 
 .search-input:focus {
@@ -354,7 +377,9 @@ onMounted(() => {
 .btn-search {
   background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
   color: white;
-  padding: 0.6rem 1.25rem;
+  padding: 0.75rem 1.5rem; /* 与浏览页面一致 */
+  flex-shrink: 0; /* 不缩小 */
+  white-space: nowrap; /* 不换行 */
 }
 
 /* 页面标题样式 */
@@ -532,6 +557,14 @@ onMounted(() => {
   word-break: break-word; /* 长单词换行 */
 }
 
+/* 文件元信息容器（类型标签 + 大小）*/
+.file-meta-info {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
 /* 文件类型标签 */
 .file-type-badge {
   display: inline-block;
@@ -541,6 +574,14 @@ onMounted(() => {
   border-radius: 4px; /* 圆角 */
   font-size: 0.75rem; /* 字体大小 12px */
   width: fit-content;
+}
+
+/* 内联大小文本（默认隐藏，在特定断点显示）*/
+.file-size-inline {
+  display: none; /* 默认隐藏 */
+  font-size: 0.75rem;
+  color: #999;
+  white-space: nowrap;
 }
 
 /* 大小列 */
@@ -630,15 +671,23 @@ onMounted(() => {
   font-size: 1rem;
 }
 
-/* 移动端响应式适配（屏幕宽度 ≤ 768px） */
-@media (max-width: 768px) {
-  /* 头部保持横向布局，按钮在右侧 */
+/* 移动端响应式适配（550px < 屏幕宽度 ≤ 768px） */
+@media (max-width: 768px) and (min-width: 551px) {
+  /* 头部保持上下结构 */
   .recycle-header {
-    flex-direction: row; /* 保持横向布局 */
-    justify-content: space-between; /* 两端对齐 */
-    align-items: center; /* 垂直居中 */
+    flex-direction: column; /* 垂直排列，保持上下结构 */
     padding: 1rem 1.5rem; /* 内边距与浏览/传输保持一致 */
     gap: 1rem;
+  }
+
+  /* 头部上方区域：标题和清空按钮 */
+  .header-top {
+    width: 100%; /* 占满宽度 */
+  }
+
+  /* 头部下方区域：搜索框 */
+  .header-bottom {
+    width: 100%; /* 占满宽度 */
   }
 
   /* 头部左侧区域 */
@@ -651,7 +700,7 @@ onMounted(() => {
   .search-box {
     width: 100%;
     flex-direction: row;
-    margin-top: 0.75rem;
+    margin-top: 0;
   }
 
   .search-input {
@@ -711,13 +760,13 @@ onMounted(() => {
     padding: 0.75rem 1rem; /* 与浏览/传输保持一致 */
   }
 
-  /* 隐藏大小列 */
-  .col-size {
-    display: none;
+  /* 显示创建时间列 */
+  .col-created {
+    display: table-cell;
   }
 
-  /* 隐藏创建时间列 */
-  .col-created {
+  /* 隐藏大小列（大小已显示在名称列中）*/
+  .col-size {
     display: none;
   }
 
@@ -749,6 +798,14 @@ onMounted(() => {
   .file-type-badge {
     font-size: 0.7rem; /* 增大字体 */
     padding: 0.15rem 0.4rem;
+  }
+
+  /* 显示内联大小文本（与768-930px一致）*/
+  .file-size-inline {
+    display: inline; /* 显示 */
+    font-size: 0.75rem;
+    color: #999;
+    white-space: nowrap;
   }
 
   /* 调整删除时间列 */
@@ -796,6 +853,632 @@ onMounted(() => {
   .file-table th {
     font-size: 0.85rem; /* 增大字体 */
     padding: 0.75rem 1rem;
+  }
+}
+
+/* 超小屏幕（屏幕宽度 ≤ 550px） */
+@media (max-width: 550px) {
+  /* 头部保持上下结构 */
+  .recycle-header {
+    flex-direction: column; /* 垂直排列，保持上下结构 */
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  /* 头部上方区域：标题和清空按钮 */
+  .header-top {
+    width: 100%;
+  }
+
+  /* 头部下方区域：搜索框 */
+  .header-bottom {
+    width: 100%;
+  }
+
+  /* 头部左侧区域 */
+  .header-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* 搜索框区域调整 */
+  .search-box {
+    width: 100%;
+    flex-direction: row;
+    margin-top: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: auto;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .btn-search {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  /* 标题大小 */
+  .title {
+    font-size: 1.25rem;
+  }
+
+  /* 副标题大小调整 */
+  .subtitle {
+    font-size: 0.75rem;
+  }
+
+  /* 头部右侧按钮区域 */
+  .header-right {
+    flex-shrink: 0;
+  }
+
+  /* 清空按钮大小调整 */
+  .btn-clear-all {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 0.75rem;
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 6px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.6rem 0.75rem;
+  }
+
+  /* 隐藏创建时间列 */
+  .col-created {
+    display: none;
+  }
+
+  /* 隐藏大小列（大小已显示在名称列中）*/
+  .col-size {
+    display: none;
+  }
+
+  /* 调整图标列宽度 */
+  .col-icon {
+    width: 40px;
+  }
+
+  /* 文件图标大小 */
+  .file-icon {
+    font-size: 1.5rem;
+  }
+
+  /* 调整名称列 */
+  .col-name {
+    min-width: auto;
+    max-width: 100px;
+  }
+
+  /* 文件名大小调整 */
+  .file-name {
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  /* 显示内联大小文本（与768-930px一致）*/
+  .file-size-inline {
+    display: inline;
+    font-size: 0.7rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* 调整删除时间列 */
+  .col-deleted {
+    width: auto;
+    min-width: 70px;
+    max-width: 80px;
+  }
+
+  /* 时间文本大小调整 */
+  .time-text {
+    font-size: 0.75rem;
+  }
+
+  /* 调整操作列 */
+  .col-actions {
+    width: auto;
+    min-width: 90px;
+  }
+
+  /* 操作按钮改为纵向排列 */
+  .action-buttons {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  /* 显示按钮文字 */
+  .btn-text {
+    display: inline;
+  }
+
+  .btn-icon {
+    font-size: 0.9rem;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.75rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  /* 表体单元格内边距 */
+  .file-table td {
+    padding: 0.6rem 0.75rem;
+  }
+}
+
+/* ========== 响应式断点（与浏览界面一致）========== */
+
+/* 中等屏幕（930px < 宽度 ≤ 1100px）：隐藏大小列，显示创建时间和删除时间列 */
+@media (max-width: 1100px) and (min-width: 931px) {
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 1.5rem;
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 10px;
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.875rem 1.25rem;
+  }
+
+  /* 隐藏大小列 */
+  .col-size {
+    display: none;
+  }
+
+  /* 文件元信息容器（类型标签 + 大小）*/
+  .file-meta-info {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  /* 调整图标列宽度（比例 0.5/6.5 ≈ 7.69%）*/
+  .col-icon {
+    width: 8%;
+    min-width: 45px;
+  }
+
+  /* 文件图标大小 */
+  .file-icon {
+    font-size: 1.85rem;
+  }
+
+  /* 调整名称列（比例 2/6.5 ≈ 30.77%）*/
+  .col-name {
+    width: 31%;
+    min-width: 120px;
+  }
+
+  /* 文件名大小调整 */
+  .file-name {
+    font-size: 0.95rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.75rem;
+  }
+
+  /* 显示内联大小文本（与<930px一致）*/
+  .file-size-inline {
+    display: inline;
+    font-size: 0.75rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* 调整创建时间列（与删除时间列保持一致，比例 1.5/6.5 ≈ 23.08%）*/
+  .col-created {
+    width: 23%;
+    min-width: 120px;
+  }
+
+  /* 调整删除时间列（比例 1.5/6.5 ≈ 23.08%）*/
+  .col-deleted {
+    width: 23%;
+    min-width: 120px;
+  }
+
+  /* 时间文本大小调整 */
+  .time-text {
+    font-size: 0.85rem;
+  }
+
+  /* 调整操作列（比例 1.5/6.5 ≈ 23.08%）*/
+  .col-actions {
+    width: 23%;
+    min-width: 130px;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.875rem;
+  }
+}
+
+/* 窄屏（768px < 宽度 ≤ 930px）：与550-768px样式一致 */
+@media (max-width: 930px) and (min-width: 769px) {
+  /* 头部保持上下结构 */
+  .recycle-header {
+    flex-direction: column; /* 垂直排列，保持上下结构 */
+    padding: 1rem 1.5rem; /* 内边距与浏览/传输保持一致 */
+    gap: 1rem;
+  }
+
+  /* 头部上方区域：标题和清空按钮 */
+  .header-top {
+    width: 100%; /* 占满宽度 */
+  }
+
+  /* 头部下方区域：搜索框 */
+  .header-bottom {
+    width: 100%; /* 占满宽度 */
+  }
+
+  /* 头部左侧区域 */
+  .header-left {
+    flex: 1; /* 占据剩余空间 */
+    min-width: 0; /* 允许收缩 */
+  }
+
+  /* 搜索框区域调整 */
+  .search-box {
+    width: 100%;
+    flex-direction: row;
+    margin-top: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: auto;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .btn-search {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  /* 标题大小与浏览/传输保持一致 */
+  .title {
+    font-size: 1.5rem; /* 增大标题 */
+  }
+
+  /* 副标题大小调整 */
+  .subtitle {
+    font-size: 0.85rem; /* 增大副标题 */
+  }
+
+  /* 头部右侧按钮区域 */
+  .header-right {
+    flex-shrink: 0; /* 不允许缩小 */
+  }
+
+  /* 清空按钮大小调整 */
+  .btn-clear-all {
+    padding: 0.625rem 1.25rem; /* 与浏览/传输按钮一致 */
+    font-size: 0.95rem; /* 增大字体 */
+  }
+
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 1rem; /* 与浏览/传输保持一致 */
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); /* 增强阴影 */
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto; /* 移除最小宽度限制 */
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.75rem 1rem; /* 与浏览/传输保持一致 */
+  }
+
+  /* 显示创建时间列 */
+  .col-created {
+    display: table-cell;
+  }
+
+  /* 隐藏大小列（大小已显示在名称列中）*/
+  .col-size {
+    display: none;
+  }
+
+  /* 调整图标列宽度（10%）*/
+  .col-icon {
+    width: 10%;
+    min-width: 40px;
+  }
+
+  /* 文件图标大小 */
+  .file-icon {
+    font-size: 1.6rem;
+  }
+
+  /* 调整名称列（40%）*/
+  .col-name {
+    width: 40%;
+    min-width: 100px;
+    max-width: none;
+  }
+
+  /* 文件名大小调整 */
+  .file-name {
+    font-size: 0.85rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  /* 显示内联大小文本（与550-768px一致）*/
+  .file-size-inline {
+    display: inline; /* 显示 */
+    font-size: 0.75rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* 调整创建时间列（与删除时间列保持一致，20%）*/
+  .col-created {
+    width: 20%;
+    min-width: 100px;
+  }
+
+  /* 调整删除时间列（与创建时间列保持一致，20%）*/
+  .col-deleted {
+    width: 20%;
+    min-width: 100px;
+  }
+
+  /* 时间文本大小调整 */
+  .time-text {
+    font-size: 0.8rem;
+  }
+
+  /* 调整操作列（30%）*/
+  .col-actions {
+    width: 30%;
+    min-width: 90px;
+  }
+
+  /* 操作按钮改为纵向排列 */
+  .action-buttons {
+    flex-direction: column; /* 纵向排列 */
+    gap: 0.4rem;
+  }
+
+  .action-btn {
+    width: 100%; /* 占满宽度 */
+    justify-content: center; /* 居中对齐 */
+    padding: 0.5rem 0.75rem; /* 增大内边距 */
+    font-size: 0.85rem; /* 增大字体 */
+    white-space: nowrap;
+  }
+
+  /* 显示按钮文字 */
+  .btn-text {
+    display: inline; /* 显示文字 */
+  }
+
+  .btn-icon {
+    font-size: 1rem; /* 增大图标 */
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.85rem; /* 增大字体 */
+    padding: 0.75rem 1rem;
+  }
+}
+
+/* 移动端列表视图（550px < 屏幕宽度 ≤ 768px）：重新分配列宽比例 */
+@media (max-width: 768px) and (min-width: 551px) {
+  /* 图标列（比例 0.5/5 = 10%）*/
+  .col-icon {
+    width: 10%;
+    min-width: 40px;
+  }
+
+  /* 文件图标大小 */
+  .file-icon {
+    font-size: 1.6rem;
+  }
+
+  /* 名称列（比例 2/5 = 40%）*/
+  .col-name {
+    width: 40%;
+    min-width: 100px;
+    max-width: none;
+  }
+
+  /* 文件名大小调整 */
+  .file-name {
+    font-size: 0.85rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  /* 显示内联大小文本（与768-930px一致）*/
+  .file-size-inline {
+    display: inline; /* 显示 */
+    font-size: 0.75rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* 隐藏大小列（大小已显示在名称列中）*/
+  .col-size {
+    display: none;
+  }
+
+  /* 操作列（比例 1.5/5 = 30%）*/
+  .col-actions {
+    width: 30%;
+    min-width: 90px;
+  }
+
+  /* 操作按钮调整 */
+  .action-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .btn-icon {
+    font-size: 0.9rem;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.8rem;
+    padding: 0.6rem 0.8rem;
+  }
+
+  /* 表体单元格内边距 */
+  .file-table td {
+    padding: 0.6rem 0.8rem;
+  }
+}
+
+/* 超小屏幕列表视图（屏幕宽度 ≤ 550px）：进一步压缩 */
+@media (max-width: 550px) {
+  /* 图标列 */
+  .col-icon {
+    width: 12%;
+    min-width: 35px;
+  }
+
+  /* 文件图标大小 */
+  .file-icon {
+    font-size: 1.4rem;
+  }
+
+  /* 名称列 */
+  .col-name {
+    width: 45%;
+    min-width: 80px;
+    max-width: none;
+  }
+
+  /* 文件名大小调整 */
+  .file-name {
+    font-size: 0.8rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.6rem;
+    padding: 0.08rem 0.25rem;
+  }
+
+  /* 显示内联大小文本 */
+  .file-size-inline {
+    display: inline;
+    font-size: 0.7rem;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* 隐藏大小列 */
+  .col-size {
+    display: none;
+  }
+
+  /* 操作列 */
+  .col-actions {
+    width: 43%;
+    min-width: 80px;
+  }
+
+  /* 操作按钮调整 */
+  .action-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .btn-icon {
+    font-size: 0.85rem;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.75rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  /* 表体单元格内边距 */
+  .file-table td {
+    padding: 0.5rem 0.6rem;
   }
 }
 </style>
