@@ -849,8 +849,9 @@ onMounted(() => {
 
 /* 图标列 */
 .col-icon {
-  width: 60px; /* 固定宽度 */
+  width: 6%; /* 比例 0.5/8 = 6.25% */
   text-align: center; /* 居中对齐 */
+  min-width: 50px;
 }
 
 /* 列表视图中的文件图标 */
@@ -861,7 +862,8 @@ onMounted(() => {
 
 /* 名称列 */
 .col-name {
-  min-width: 200px; /* 最小宽度 */
+  width: 25%; /* 比例 2/8 = 25% */
+  min-width: 150px;
 }
 
 /* 名称单元格内容 */
@@ -892,13 +894,15 @@ onMounted(() => {
 
 /* 大小列 */
 .col-size {
-  width: 120px; /* 固定宽度 */
+  width: 13%; /* 比例 1/8 = 12.5% */
+  min-width: 90px;
   white-space: nowrap; /* 不换行 */
 }
 
 /* 创建时间列 */
 .col-created {
-  width: 140px; /* 固定宽度 */
+  width: 19%; /* 比例 1.5/8 = 18.75% */
+  min-width: 140px;
   white-space: nowrap; /* 不换行 */
 }
 
@@ -910,7 +914,8 @@ onMounted(() => {
 
 /* 时间列 */
 .col-date {
-  width: 140px; /* 固定宽度 */
+  width: 19%; /* 比例 1.5/8 = 18.75% */
+  min-width: 140px;
   white-space: nowrap; /* 不换行 */
 }
 
@@ -922,7 +927,8 @@ onMounted(() => {
 
 /* 操作列 */
 .col-actions {
-  width: 180px; /* 固定宽度 */
+  width: 19%; /* 比例 1.5/8 = 18.75% */
+  min-width: 150px;
   white-space: nowrap; /* 不换行 */
 }
 
@@ -980,6 +986,184 @@ onMounted(() => {
 /* 按钮文字 */
 .btn-text {
   display: inline;
+}
+
+/* 中等屏幕（930px < 宽度 ≤ 1100px）：仅调整列表视图，显示大小列 */
+@media (max-width: 1100px) and (min-width: 931px) {
+  /* ========== 列表视图样式调整 ========= */
+
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 1.5rem;
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 10px;
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.875rem 1.25rem;
+  }
+
+  /* 隐藏创建时间列 */
+  .col-created {
+    display: none;
+  }
+
+  /* 调整图标列宽度（比例 0.5/6.5 ≈ 7.69%）*/
+  .col-icon {
+    width: 8%;
+    min-width: 45px;
+  }
+
+  /* 文件图标大小 */
+  .file-table .file-icon {
+    font-size: 1.85rem;
+  }
+
+  /* 调整名称列（比例 2/6.5 ≈ 30.77%）*/
+  .col-name {
+    width: 31%;
+    min-width: 120px;
+  }
+
+  /* 文件名大小调整 */
+  .file-table .file-name {
+    font-size: 0.95rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.75rem;
+  }
+
+  /* 调整大小列（比例 1/6.5 ≈ 15.38%）*/
+  .col-size {
+    width: 15%;
+    min-width: 80px;
+  }
+
+  /* 大小文本 */
+  .size-text {
+    font-size: 0.85rem;
+  }
+
+  /* 调整修改时间列（比例 1.5/6.5 ≈ 23.08%）*/
+  .col-date {
+    width: 23%;
+    min-width: 120px;
+  }
+
+  /* 时间文本大小调整 */
+  .time-text {
+    font-size: 0.85rem;
+  }
+
+  /* 调整操作列（比例 1.5/6.5 ≈ 23.08%）*/
+  .col-actions {
+    width: 23%;
+    min-width: 130px;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.875rem;
+  }
+}
+
+/* 窄屏（885px < 宽度 ≤ 930px）：隐藏修改时间列，显示大小列 */
+@media (max-width: 930px) and (min-width: 886px) {
+  /* ========== 列表视图样式调整 ========= */
+
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 1.5rem;
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 10px;
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.875rem 1.25rem;
+  }
+
+  /* 隐藏创建时间列 */
+  .col-created {
+    display: none;
+  }
+
+  /* 隐藏修改时间列 */
+  .col-date {
+    display: none;
+  }
+
+  /* 调整图标列宽度（比例 0.5/5 = 10%）*/
+  .col-icon {
+    width: 10%;
+    min-width: 45px;
+  }
+
+  /* 文件图标大小 */
+  .file-table .file-icon {
+    font-size: 1.85rem;
+  }
+
+  /* 调整名称列（比例 2/5 = 40%）*/
+  .col-name {
+    width: 40%;
+    min-width: 120px;
+  }
+
+  /* 文件名大小调整 */
+  .file-table .file-name {
+    font-size: 0.95rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.75rem;
+  }
+
+  /* 调整大小列（比例 1/5 = 20%）*/
+  .col-size {
+    width: 20%;
+    min-width: 90px;
+  }
+
+  /* 大小文本 */
+  .size-text {
+    font-size: 0.85rem;
+  }
+
+  /* 调整操作列（比例 1.5/5 = 30%）*/
+  .col-actions {
+    width: 30%;
+    min-width: 130px;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.875rem;
+  }
 }
 
 /* 移动端与横屏过窄（屏幕宽度 ≤ 885px）响应式适配 */
@@ -1070,6 +1254,191 @@ onMounted(() => {
   .btn {
     padding: 0.5rem 1rem; /* 上下 8px，左右 16px 内边距 */
     font-size: 0.875rem; /* 字体大小 14px */
+  }
+
+  /* ========== 竖屏列表视图样式（与回收站保持一致）========== */
+
+  /* 缩小列表内边距 */
+  .file-list {
+    padding: 1rem; /* 与回收站保持一致 */
+  }
+
+  /* 表格包装器 */
+  .table-wrapper {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); /* 增强阴影 */
+  }
+
+  /* 缩小表格最小宽度，允许压缩 */
+  .file-table {
+    min-width: auto; /* 移除最小宽度限制 */
+    width: 100%;
+  }
+
+  /* 缩小表格单元格内边距 */
+  .file-table th,
+  .file-table td {
+    padding: 0.75rem 1rem; /* 与回收站保持一致 */
+  }
+
+  /* 隐藏创建时间列 */
+  .col-created {
+    display: none;
+  }
+
+  /* 隐藏修改时间列 */
+  .col-date {
+    display: none;
+  }
+
+  /* 调整图标列宽度 */
+  .col-icon {
+    width: 45px; /* 稍微增大 */
+  }
+
+  /* 文件图标大小 */
+  .file-table .file-icon {
+    font-size: 1.75rem; /* 增大图标 */
+  }
+
+  /* 调整名称列 */
+  .col-name {
+    min-width: auto; /* 移除最小宽度 */
+    max-width: 110px; /* 适当增加宽度 */
+  }
+
+  /* 文件名大小调整 */
+  .file-table .file-name {
+    font-size: 0.9rem; /* 增大字体 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.7rem; /* 增大字体 */
+    padding: 0.15rem 0.4rem;
+  }
+
+  /* 调整大小列 */
+  .col-size {
+    width: auto; /* 自动宽度 */
+    min-width: 80px;
+    max-width: 90px;
+  }
+
+  /* 大小文本 */
+  .size-text {
+    font-size: 0.8rem; /* 增大字体 */
+  }
+
+  /* 调整操作列 */
+  .col-actions {
+    width: auto; /* 自动宽度 */
+    min-width: 100px; /* 减小最小宽度 */
+  }
+
+  /* 操作按钮改为纵向排列 */
+  .action-buttons {
+    flex-direction: column; /* 纵向排列 */
+    gap: 0.4rem;
+  }
+
+  .file-table .action-btn {
+    width: 100%; /* 占满宽度 */
+    justify-content: center; /* 居中对齐 */
+    padding: 0.5rem 0.75rem; /* 增大内边距 */
+    font-size: 0.85rem; /* 增大字体 */
+    white-space: nowrap;
+  }
+
+  /* 显示按钮文字 */
+  .btn-text {
+    display: inline; /* 显示文字 */
+  }
+
+  .btn-icon {
+    font-size: 1rem; /* 增大图标 */
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.85rem; /* 增大字体 */
+    padding: 0.75rem 1rem;
+  }
+
+  /* ========== 移动端列表视图样式（≤ 768px）========== */
+}
+
+/* 移动端列表视图（屏幕宽度 ≤ 768px）：重新分配列宽比例 */
+@media (max-width: 768px) {
+  /* 图标列（比例 0.5/5 = 10%）*/
+  .col-icon {
+    width: 10%;
+    min-width: 40px;
+  }
+
+  /* 文件图标大小 */
+  .file-table .file-icon {
+    font-size: 1.6rem;
+  }
+
+  /* 名称列（比例 2/5 = 40%）*/
+  .col-name {
+    width: 40%;
+    min-width: 100px;
+    max-width: none;
+  }
+
+  /* 文件名大小调整 */
+  .file-table .file-name {
+    font-size: 0.85rem;
+  }
+
+  /* 类型标签大小调整 */
+  .file-type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  /* 大小列（比例 1/5 = 20%）*/
+  .col-size {
+    width: 20%;
+    min-width: 70px;
+    max-width: none;
+  }
+
+  /* 大小文本 */
+  .size-text {
+    font-size: 0.75rem;
+  }
+
+  /* 操作列（比例 1.5/5 = 30%）*/
+  .col-actions {
+    width: 30%;
+    min-width: 90px;
+  }
+
+  /* 操作按钮调整 */
+  .file-table .action-btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .btn-icon {
+    font-size: 0.9rem;
+  }
+
+  /* 表头字体大小调整 */
+  .file-table th {
+    font-size: 0.8rem;
+    padding: 0.6rem 0.8rem;
+  }
+
+  /* 表体单元格内边距 */
+  .file-table td {
+    padding: 0.6rem 0.8rem;
   }
 
   /* 移动端侧边栏：默认隐藏在屏幕左侧外 */
