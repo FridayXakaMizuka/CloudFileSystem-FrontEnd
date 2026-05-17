@@ -426,6 +426,7 @@ onMounted(() => {
   gap: 0.75rem;
   flex: 1; /* 占据剩余空间 */
   min-width: 0; /* 允许缩小 */
+  padding-right: 2rem; /* 与右侧工具栏保持2rem间隙 */
 }
 
 /* 搜索框区域 */
@@ -495,7 +496,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: 200px;
+  width: 100%; /* 占满父容器宽度 */
+  min-width: 0; /* 允许缩小 */
 }
 
 /* 存储进度条容器 */
@@ -545,6 +547,8 @@ onMounted(() => {
 .toolbar {
   display: flex; /* 启用 Flexbox 布局 */
   gap: 1rem; /* 按钮间距 16px */
+  flex-shrink: 0; /* 不缩小，保持内容宽度 */
+  white-space: nowrap; /* 不换行 */
 }
 
 /* 操作按钮组容器：横屏时横向排列 */
@@ -978,8 +982,8 @@ onMounted(() => {
   display: inline;
 }
 
-/* 移动端响应式适配（屏幕宽度 ≤ 768px） */
-@media (max-width: 768px) {
+/* 移动端与横屏过窄（屏幕宽度 ≤ 885px）响应式适配 */
+@media (max-width: 885px) {
   /* 缩小标题栏内边距 */
   .browse-header {
     padding: 1rem; /* 四周 16px 内边距 */
@@ -993,6 +997,11 @@ onMounted(() => {
   /* 标题包装器：竖屏时显示开关 */
   .title-wrapper {
     gap: 0.75rem;
+  }
+
+  /* 头部左侧：竖屏时与右侧按钮保持1rem间距 */
+  .header-left {
+    padding-right: 1rem; /* 与右侧工具栏保持1rem间隙 */
   }
 
   /* 移动端视图切换开关：竖屏时显示 */
@@ -1015,8 +1024,18 @@ onMounted(() => {
   /* 操作按钮组容器：竖屏时纵向排列 */
   .action-buttons-wrapper {
     flex-direction: column; /* 纵向排列 */
-    gap: 1rem; /* 按钮间距 1rem */
+    gap: 0.5rem; /* 按钮间距 0.5rem */
     width: auto; /* 自适应宽度 */
+  }
+
+  /* 竖屏时确保上传和新建按钮高度一致 */
+  .btn-upload,
+  .btn-new-folder {
+    height: 2.75rem; /* 固定高度，确保两个按钮等高 */
+    min-height: 2.75rem; /* 最小高度 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* 移动端开关轨道样式 */

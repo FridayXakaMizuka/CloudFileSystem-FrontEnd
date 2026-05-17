@@ -77,24 +77,47 @@ window.fetch = async function(url, options = {}) {
       })
     }
 
-    // 6. 检查 JWT 令牌是否失效（401 未授权）
+    // 6. 检查 401 状态码，区分登录失败和 JWT 失效
     if (response.status === 401) {
-      logger.warn('⚠️ JWT 令牌失效，状态码:', response.status)
+      const urlString = typeof url === 'string' ? url : url.url
+      const isAuthRequest = isAuthenticationRequest(urlString)
       
-      // 显示提示框
-      alert('身份信息已过期，请重新登录')
-      
-      // 清除认证信息
-      clearAuthInfo()
-      
-      // 跳转到登录页面
-      window.location.href = '/login'
-      
-      // 返回一个特殊的响应对象，防止后续代码继续执行
-      return new Response(JSON.stringify({ success: false, code: 401, message: '身份信息已过期' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' }
-      })
+      if (isAuthRequest) {
+        // 认证相关接口的 401：登录失败、双因素认证失败等
+        logger.warn('⚠️ 认证请求失败:', urlString)
+        
+        // 克隆响应以读取 body（不干扰后续使用）
+        const clonedResponse = response.clone()
+        
+        try {
+          const responseData = await clonedResponse.json()
+          logger.warn('认证失败详情:', responseData)
+          
+          // 返回原始响应，让调用方处理具体错误信息
+          return response
+        } catch (error) {
+          logger.error('解析响应失败:', error)
+          return response
+        }
+      } else {
+        // 非认证接口的 401：JWT 令牌失效
+        logger.warn('⚠️ JWT 令牌失效，状态码:', response.status, 'URL:', urlString)
+        
+        // 显示提示框
+        alert('身份信息已过期，请重新登录')
+        
+        // 清除认证信息
+        clearAuthInfo()
+        
+        // 跳转到登录页面
+        window.location.href = '/login'
+        
+        // 返回一个特殊的响应对象，防止后续代码继续执行
+        return new Response(JSON.stringify({ success: false, code: 401, message: '身份信息已过期' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
     }
 
     return response
@@ -129,6 +152,30 @@ const shouldSkipInterceptor = (url, options) => {
 
   // 检查是否匹配跳过模式
   return skipPatterns.some(pattern => urlString.includes(pattern))
+}
+
+/**
+ * 判断是否为认证相关请求（白名单）
+ * @param {string} url - 请求URL
+ * @returns {boolean} 是否为认证请求
+ */
+const isAuthenticationRequest = (url) => {
+  // 认证相关接口白名单
+  const authPatterns = [
+    '/auth/login',           // 登录
+    '/auth/register',        // 注册
+    '/auth/refresh',         // 刷新 token
+    '/auth/two-factor',      // 双因素认证
+    '/auth/verify',          // 验证
+    '/auth/logout',          // 登出
+    '/auth/forgot-password', // 忘记密码
+    '/auth/reset-password',  // 重置密码
+    '/auth/send-code',       // 发送验证码
+    '/auth/verify-code',     // 验证码校验
+  ]
+
+  // 检查 URL 是否包含认证相关路径
+  return authPatterns.some(pattern => url.includes(pattern))
 }
 
 /**
