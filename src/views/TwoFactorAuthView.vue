@@ -866,14 +866,25 @@ onMounted(() => {
   gap: 0.8rem;
 }
 
-.verification-code-input,
-.security-answer-input {
+.verification-code-input {
   flex: 1;
+  min-width: 0;
   padding: 0.75rem 1rem;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 1rem;
   transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.security-answer-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
 }
 
 .verification-code-input:focus,

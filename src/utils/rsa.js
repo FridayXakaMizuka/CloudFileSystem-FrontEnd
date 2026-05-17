@@ -3,6 +3,7 @@ import { setCookie, getRSAPublicKeyFromCookie } from './cookie'
 import { createLogger } from './logger'
 import { AUTH_API } from '@/config/api'
 import { getSessionId, resetSessionIdExpiry, resetPurposeSessionIdExpiry } from './sessionId'
+import { addAllRequestHeaders } from './requestHeaders'
 
 const logger = createLogger('RSA')
 
@@ -29,12 +30,17 @@ export const fetchRSAKey = async (purpose = null) => {
     }
     
     // 2. 发送请求获取公钥（携带 sessionId）
+    const headers = new Headers({
+      'Content-Type': 'application/json'
+    })
+    
+    // 添加所有安全请求头（包括设备指纹）
+    await addAllRequestHeaders(headers)
+    
     const response = await fetch(AUTH_API.RSA_KEY, {
       method: 'POST',
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: headers,
       body: JSON.stringify({ sessionId })
     })
     

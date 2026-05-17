@@ -214,15 +214,15 @@
             
             <!-- 按钮组 -->
             <div class="button-group button-group-vertical">
-              <button class="btn btn-prev" @click="handlePrevStepFromVerify">
-                上一步
-              </button>
               <button 
                 class="btn btn-next" 
                 @click="handleVerify"
                 :disabled="!canProceedToNext || isLoading"
               >
                 {{ isLoading ? '验证中...' : '下一步' }}
+              </button>
+              <button class="btn btn-prev" @click="handlePrevStepFromVerify">
+                上一步
               </button>
             </div>
           </div>
@@ -262,15 +262,15 @@
             </div>
             
             <div class="button-group button-group-vertical">
-              <button class="btn btn-prev" @click="handlePrevStepFromReset">
-                上一步
-              </button>
               <button 
                 class="btn btn-next" 
                 @click="handleResetPassword"
                 :disabled="!canResetPassword || isLoading"
               >
                 {{ isLoading ? '重置中...' : '确认重置' }}
+              </button>
+              <button class="btn btn-prev" @click="handlePrevStepFromReset">
+                上一步
               </button>
             </div>
           </div>

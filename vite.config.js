@@ -15,6 +15,59 @@ export default defineConfig({
   plugins: [
     vue(),
     vueDevTools(),
+    {
+      name: 'https-server',
+      configureServer(server) {
+        console.log('\n[Plugin] configureServer called')
+        
+        const certPath = path.resolve(__dirname, 'certs/cert.pem')
+        const keyPath = path.resolve(__dirname, 'certs/key.pem')
+        
+        if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+          console.log('[Plugin] Certificates found')
+          
+          try {
+            const https = require('https')
+            const cert = fs.readFileSync(certPath)
+            const key = fs.readFileSync(keyPath)
+            
+            const httpsServer = https.createServer(
+              { cert, key },
+              server.middlewares
+            )
+            
+            // 处理 WebSocket upgrade 请求
+            httpsServer.on('upgrade', (req, socket, head) => {
+              console.log('[HTTPS] WebSocket upgrade request:', req.url)
+              // 转发到主 HTTP 服务器的 WebSocket 处理器
+              if (server.ws && server.ws.server) {
+                server.ws.server.handleUpgrade(req, socket, head, (ws) => {
+                  server.ws.server.emit('connection', ws, req)
+                })
+              } else if (server.httpServer) {
+                // 备用方案：直接转发到 HTTP 服务器
+                server.httpServer.emit('upgrade', req, socket, head)
+              }
+            })
+            
+            httpsServer.listen(2311, '0.0.0.0', () => {
+              console.log('\n========================================')
+              console.log('🔒 HTTPS Server: https://localhost:2311')
+              console.log('🌐 HTTP Server: http://localhost:2310')
+              console.log('========================================\n')
+            })
+            
+            httpsServer.on('error', (error) => {
+              console.error('[HTTPS Error]', error.message)
+            })
+          } catch (error) {
+            console.error('[Plugin Error]', error.message)
+          }
+        } else {
+          console.log('[Plugin] No certificates found')
+        }
+      }
+    }
   ],
   resolve: {
     alias: {
@@ -34,50 +87,6 @@ export default defineConfig({
         secure: false, // 允许混合内容（HTTPS前端访问HTTP后端）
         ws: true, // 支持 WebSocket
       }
-    }
-  },
-  // 配置额外的 HTTPS 服务器
-  configureServer: async (server) => {
-    // 如果证书存在，创建 HTTPS 服务器
-    const certPath = path.resolve(__dirname, 'certs/cert.pem')
-    const keyPath = path.resolve(__dirname, 'certs/key.pem')
-    
-    if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-      try {
-        const https = await import('https')
-        const cert = fs.readFileSync(certPath)
-        const key = fs.readFileSync(keyPath)
-        
-        // 创建 HTTPS 服务器
-        const httpsServer = https.createServer(
-          { cert, key },
-          server.middlewares
-        )
-        
-        // 处理 WebSocket 升级
-        server.httpServer.on('upgrade', (req, socket, head) => {
-          if (req.url.startsWith('/wss')) {
-            // 转发 wss 请求到主 ws 服务器
-            server.ws.server.handleUpgrade(req, socket, head, () => {})
-          }
-        })
-        
-        // 监听 HTTPS 端口
-        httpsServer.listen(2311, '0.0.0.0', () => {
-          console.log('\n🔒 HTTPS Server running at:')
-          console.log('  - Local:   https://localhost:2311')
-          console.log('  - Network: https://<your-ip>:2311')
-          console.log('\n🌐 HTTP Server running at:')
-          console.log('  - Local:   http://localhost:2310')
-          console.log('  - Network: http://<your-ip>:2310')
-        })
-      } catch (error) {
-        console.warn('⚠️  HTTPS 服务器启动失败:', error.message)
-        console.log('ℹ️  仅使用 HTTP 服务器: http://localhost:2310')
-      }
-    } else {
-      console.log('ℹ️  未检测到 SSL 证书，仅使用 HTTP 服务器')
-      console.log('💡 提示: 运行 setup_https.bat 生成证书以启用 HTTPS')
     }
   }
 })

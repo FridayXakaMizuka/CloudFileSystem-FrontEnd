@@ -8,8 +8,9 @@
  * 3. 无需修改现有代码
  */
 
-import { createSecureFetchOptions } from './requestHeaders'
+import { addAllRequestHeaders } from './requestHeaders'
 import { createLogger } from './logger'
+import { clearAuthInfo } from './auth'
 
 const logger = createLogger('FetchInterceptor')
 
@@ -29,7 +30,25 @@ window.fetch = async function(url, options = {}) {
 
     // 2. 为请求添加安全请求头
     logger.debug('🔧 拦截器处理请求:', typeof url === 'string' ? url : url.url)
-    const secureOptions = await createSecureFetchOptions(options)
+    
+    // 创建或获取 Headers 对象
+    let headers
+    if (options.headers instanceof Headers) {
+      headers = options.headers
+    } else if (options.headers) {
+      headers = new Headers(options.headers)
+    } else {
+      headers = new Headers()
+    }
+    
+    // 添加所有安全请求头
+    await addAllRequestHeaders(headers)
+    
+    // 构建新的 options
+    const secureOptions = {
+      ...options,
+      headers: headers
+    }
     
     // 3. 记录请求日志（开发环境）
     if (import.meta.env.DEV) {
@@ -55,6 +74,26 @@ window.fetch = async function(url, options = {}) {
       logger.debug('📥 响应:', {
         status: response.status,
         url: response.url
+      })
+    }
+
+    // 6. 检查 JWT 令牌是否失效（401 未授权）
+    if (response.status === 401) {
+      logger.warn('⚠️ JWT 令牌失效，状态码:', response.status)
+      
+      // 显示提示框
+      alert('身份信息已过期，请重新登录')
+      
+      // 清除认证信息
+      clearAuthInfo()
+      
+      // 跳转到登录页面
+      window.location.href = '/login'
+      
+      // 返回一个特殊的响应对象，防止后续代码继续执行
+      return new Response(JSON.stringify({ success: false, code: 401, message: '身份信息已过期' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
       })
     }
 

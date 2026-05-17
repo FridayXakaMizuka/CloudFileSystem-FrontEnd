@@ -30,18 +30,10 @@
     </header>
 
     <main class="main-content">
-      <!-- 左侧边缘触发区域（竖屏时用于鼠标悬停触发侧边栏） -->
-      <div
-        v-if="!sidebarOpen"
-        class="left-edge-trigger"
-        @mouseenter="handleMouseEnterLeftEdge"
-      ></div>
-
-      <!-- 左侧导航栏（横屏显示，竖屏时通过手势/悬停触发） -->
+      <!-- 左侧导航栏（横屏显示，竖屏时通过手势/头像点击触发） -->
       <aside 
         class="sidebar" 
         :class="{ 'sidebar-open': sidebarOpen }"
-        @mouseleave="handleMouseLeaveSidebar"
       >
         <nav class="nav-menu">
           <button
@@ -60,6 +52,14 @@
             <span class="nav-icon">📊</span>
             <span class="nav-text">传输</span>
           </button>
+          <button
+              class="nav-item"
+              :class="{ active: currentView === 'recycle' }"
+              @click="selectView('recycle')"
+          >
+            <span class="nav-icon">♻️</span>
+            <span class="nav-text">回收站</span>
+          </button>
         </nav>
       </aside>
 
@@ -73,6 +73,7 @@
       <section class="content-area">
         <BrowseView v-if="currentView === 'browse'" />
         <TransferView v-if="currentView === 'transfer'" />
+        <RecycleBinView v-if="currentView === 'recycle'" />
       </section>
     </main>
 
@@ -112,6 +113,7 @@ import {ref, onMounted, computed, onUnmounted, onActivated} from 'vue'
 import { useRouter, onBeforeRouteUpdate } from 'vue-router'
 import BrowseView from './BrowseView.vue'
 import TransferView from './TransferView.vue'
+import RecycleBinView from './RecycleBinView.vue'
 import { getUserInfo, clearAuthInfo, getToken } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
 import { getFullAvatarUrl, loadAuthenticatedImage, clearUserInfoCache, getCachedUserInfo } from '@/utils/userInfo'
@@ -168,11 +170,19 @@ const updateUsername = async () => {
 }
 
 /**
- * 处理头像点击事件
+ * 处理头像点击事件（竖屏时打开侧边栏）
  */
 const handleAvatarClick = () => {
-  // 可以在这里添加头像点击逻辑
-  logger.debug('头像被点击')
+  const windowWidth = window.innerWidth
+  logger.info('头像被点击', { windowWidth, isMobile: windowWidth <= 768 })
+  
+  // 仅在竖屏（移动端）模式下生效
+  if (windowWidth <= 768) {
+    openSidebar()
+    logger.info('竖屏模式：已打开侧边栏')
+  } else {
+    logger.debug('横屏模式：头像被点击（不执行操作）')
+  }
 }
 
 /**
@@ -231,25 +241,7 @@ const closeSidebar = () => {
 let touchStartX = 0
 let touchEndX = 0
 
-/**
- * 处理鼠标进入左侧边缘事件（竖屏时打开侧边栏）
- */
-const handleMouseEnterLeftEdge = () => {
-  // 仅在竖屏（移动端）模式下生效
-  if (window.innerWidth <= 768) {
-    openSidebar()
-  }
-}
 
-/**
- * 处理鼠标离开侧边栏事件（竖屏时关闭侧边栏）
- */
-const handleMouseLeaveSidebar = () => {
-  // 仅在竖屏（移动端）模式下生效
-  if (window.innerWidth <= 768 && sidebarOpen.value) {
-    closeSidebar()
-  }
-}
 
 /**
  * 处理触摸开始事件
@@ -494,18 +486,7 @@ onUnmounted(() => {
   }
 }
 
-/* 左侧边缘触发区域（竖屏时显示） */
-.left-edge-trigger {
-  display: none; /* 默认隐藏（横屏时不显示） */
-  position: fixed; /* 固定定位 */
-  left: 0; /* 左侧对齐 */
-  top: 0; /* 顶部对齐 */
-  bottom: 0; /* 底部对齐 */
-  width: 30px; /* 宽度 30px，作为触发区域 */
-  z-index: 998; /* 层级：低于遮罩层和侧边栏 */
-  background: transparent; /* 透明背景 */
-  cursor: pointer; /* 鼠标悬停时显示手型光标 */
-}
+/* 左侧边缘触发区域已移除 */
 
 
 /* 头像容器 */
@@ -767,10 +748,7 @@ onUnmounted(() => {
     font-size: 0.875rem; /* 字体大小 14px */
   }
 
-  /* 显示左侧边缘触发区域 */
-  .left-edge-trigger {
-    display: block; /* 竖屏时显示 */
-  }
+  /* 左侧边缘触发区域已移除，改为点击头像触发 */
 
   /* 移动端侧边栏：默认隐藏在屏幕左侧外 */
   .sidebar {

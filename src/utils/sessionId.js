@@ -1,9 +1,13 @@
 /**
  * 会话 ID 生成和管理工具
- * 前端生成 UUID v4 格式的 sessionId，存储到 Cookie 和组件状态
+ * 前端生成 UUID v4 格式的 sessionId，存储到 sessionStorage（每个标签页独立）
+ * 
+ * 重要改进：
+ * - 使用 sessionStorage 替代 Cookie，实现浏览器标签页级别的会话隔离
+ * - 每个标签页/窗口有独立的 sessionId，避免多实例登录冲突
+ * - 关闭标签页后自动清除，提高安全性
  */
 
-import { setCookie, getCookie, deleteCookie } from './cookie'
 import { createLogger } from './logger'
 
 const logger = createLogger('SessionId')
@@ -26,18 +30,57 @@ export const generateSessionId = () => {
 }
 
 /**
- * 获取当前会话 ID（从 Cookie 读取，如果过期则重新生成）
+ * 从 sessionStorage 获取值
+ * @param {string} key - 键名
+ * @returns {string|null} 值或 null
+ */
+const getSessionStorage = (key) => {
+  try {
+    return sessionStorage.getItem(key)
+  } catch (error) {
+    logger.error(`读取 sessionStorage ${key} 失败:`, error)
+    return null
+  }
+}
+
+/**
+ * 向 sessionStorage 设置值
+ * @param {string} key - 键名
+ * @param {string} value - 值
+ */
+const setSessionStorage = (key, value) => {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch (error) {
+    logger.error(`写入 sessionStorage ${key} 失败:`, error)
+  }
+}
+
+/**
+ * 从 sessionStorage 删除值
+ * @param {string} key - 键名
+ */
+const removeSessionStorage = (key) => {
+  try {
+    sessionStorage.removeItem(key)
+  } catch (error) {
+    logger.error(`删除 sessionStorage ${key} 失败:`, error)
+  }
+}
+
+/**
+ * 获取当前会话 ID（从 sessionStorage 读取，如果过期则重新生成）
  * @returns {string} 会话 ID
  */
 export const getSessionId = () => {
   try {
-    // 从 Cookie 读取 sessionId 和创建时间
-    const sessionId = getCookie('sessionId')
-    const sessionTimestamp = getCookie('sessionTimestamp')
+    // 从 sessionStorage 读取 sessionId 和创建时间
+    const sessionId = getSessionStorage('sessionId')
+    const sessionTimestamp = getSessionStorage('sessionTimestamp')
     
     if (!sessionId || !sessionTimestamp) {
-      // Cookie 中没有，生成新的
-      logger.info('Cookie 中没有 sessionId，生成新的')
+      // sessionStorage 中没有，生成新的
+      logger.info('sessionStorage 中没有 sessionId，生成新的')
       return createNewSessionId()
     }
     
@@ -63,16 +106,16 @@ export const getSessionId = () => {
 }
 
 /**
- * 创建新的会话 ID 并保存到 Cookie
+ * 创建新的会话 ID 并保存到 sessionStorage
  * @returns {string} 新生成的会话 ID
  */
 export const createNewSessionId = () => {
   const sessionId = generateSessionId()
   const timestamp = Date.now().toString()
   
-  // 保存到 Cookie（5分钟有效期）
-  setCookie('sessionId', sessionId, SESSION_ID_EXPIRY / 86400) // 转换为天
-  setCookie('sessionTimestamp', timestamp, SESSION_ID_EXPIRY / 86400)
+  // 保存到 sessionStorage（5分钟有效期由前端检查）
+  setSessionStorage('sessionId', sessionId)
+  setSessionStorage('sessionTimestamp', timestamp)
   
   logger.info('已生成新的 sessionId:', sessionId)
   logger.debug('创建时间戳:', timestamp)
@@ -81,11 +124,11 @@ export const createNewSessionId = () => {
 }
 
 /**
- * 清除会话 ID（从 Cookie 中删除）
+ * 清除会话 ID（从 sessionStorage 中删除）
  */
 export const clearSessionId = () => {
-  deleteCookie('sessionId')
-  deleteCookie('sessionTimestamp')
+  removeSessionStorage('sessionId')
+  removeSessionStorage('sessionTimestamp')
   logger.info('已清除 sessionId')
 }
 
@@ -96,16 +139,16 @@ export const clearSessionId = () => {
  */
 export const getOrCreatePurposeSessionId = (purpose) => {
   try {
-    const cookieName = `sessionId_${purpose}`
+    const storageName = `sessionId_${purpose}`
     const timestampName = `sessionTimestamp_${purpose}`
     
-    // 从 Cookie 读取
-    const sessionId = getCookie(cookieName)
-    const sessionTimestamp = getCookie(timestampName)
+    // 从 sessionStorage 读取
+    const sessionId = getSessionStorage(storageName)
+    const sessionTimestamp = getSessionStorage(timestampName)
     
     if (!sessionId || !sessionTimestamp) {
-      // Cookie 中没有，生成新的
-      logger.info(`Cookie 中没有 ${purpose} 的 sessionId，生成新的`)
+      // sessionStorage 中没有，生成新的
+      logger.info(`sessionStorage 中没有 ${purpose} 的 sessionId，生成新的`)
       return createNewPurposeSessionId(purpose)
     }
     
@@ -131,7 +174,7 @@ export const getOrCreatePurposeSessionId = (purpose) => {
 }
 
 /**
- * 创建新的特定用途会话 ID 并保存到 Cookie
+ * 创建新的特定用途会话 ID 并保存到 sessionStorage
  * @param {string} purpose - 用途标识（'email', 'phone', 'password'）
  * @returns {string} 新生成的会话 ID
  */
@@ -139,12 +182,12 @@ export const createNewPurposeSessionId = (purpose) => {
   const sessionId = generateSessionId()
   const timestamp = Date.now().toString()
   
-  const cookieName = `sessionId_${purpose}`
+  const storageName = `sessionId_${purpose}`
   const timestampName = `sessionTimestamp_${purpose}`
   
-  // 保存到 Cookie（5分钟有效期）
-  setCookie(cookieName, sessionId, SESSION_ID_EXPIRY / 86400) // 转换为天
-  setCookie(timestampName, timestamp, SESSION_ID_EXPIRY / 86400)
+  // 保存到 sessionStorage（5分钟有效期由前端检查）
+  setSessionStorage(storageName, sessionId)
+  setSessionStorage(timestampName, timestamp)
   
   logger.info(`已生成新的 ${purpose} sessionId:`, sessionId)
   logger.debug('创建时间戳:', timestamp)
@@ -158,10 +201,10 @@ export const createNewPurposeSessionId = (purpose) => {
  */
 export const resetPurposeSessionIdExpiry = (purpose) => {
   try {
-    const cookieName = `sessionId_${purpose}`
+    const storageName = `sessionId_${purpose}`
     const timestampName = `sessionTimestamp_${purpose}`
     
-    const sessionId = getCookie(cookieName)
+    const sessionId = getSessionStorage(storageName)
     
     if (!sessionId) {
       logger.warn(`没有 ${purpose} 的 sessionId，无法重置有效期`)
@@ -170,8 +213,8 @@ export const resetPurposeSessionIdExpiry = (purpose) => {
     
     // 更新创建时间戳为当前时间
     const timestamp = Date.now().toString()
-    setCookie(cookieName, sessionId, SESSION_ID_RESET_EXPIRY / 86400)
-    setCookie(timestampName, timestamp, SESSION_ID_RESET_EXPIRY / 86400)
+    setSessionStorage(storageName, sessionId)
+    setSessionStorage(timestampName, timestamp)
     
     logger.info(`${purpose} 的 sessionId 有效期已重置为 ${SESSION_ID_RESET_EXPIRY} 秒`)
     logger.debug('新的时间戳:', timestamp)
@@ -188,11 +231,11 @@ export const resetPurposeSessionIdExpiry = (purpose) => {
  * @param {string} purpose - 用途标识（'email', 'phone', 'password'）
  */
 export const clearPurposeSessionId = (purpose) => {
-  const cookieName = `sessionId_${purpose}`
+  const storageName = `sessionId_${purpose}`
   const timestampName = `sessionTimestamp_${purpose}`
   
-  deleteCookie(cookieName)
-  deleteCookie(timestampName)
+  removeSessionStorage(storageName)
+  removeSessionStorage(timestampName)
   logger.info(`已清除 ${purpose} 的 sessionId`)
 }
 
@@ -202,7 +245,7 @@ export const clearPurposeSessionId = (purpose) => {
  */
 export const resetSessionIdExpiry = () => {
   try {
-    const sessionId = getCookie('sessionId')
+    const sessionId = getSessionStorage('sessionId')
     
     if (!sessionId) {
       logger.warn('没有 sessionId，无法重置有效期')
@@ -211,8 +254,8 @@ export const resetSessionIdExpiry = () => {
     
     // 更新创建时间戳为当前时间
     const timestamp = Date.now().toString()
-    setCookie('sessionId', sessionId, SESSION_ID_RESET_EXPIRY / 86400) // 转换为天
-    setCookie('sessionTimestamp', timestamp, SESSION_ID_RESET_EXPIRY / 86400)
+    setSessionStorage('sessionId', sessionId)
+    setSessionStorage('sessionTimestamp', timestamp)
     
     logger.info(`sessionId 有效期已重置为 ${SESSION_ID_RESET_EXPIRY} 秒`)
     logger.debug('新的时间戳:', timestamp)

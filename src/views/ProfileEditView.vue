@@ -413,15 +413,35 @@
               
               <!-- 密保问题编辑模式 -->
               <div v-if="editingFields.has('security')" class="edit-mode">
+                <!-- 旧密保问题答案 -->
+                <div class="form-group">
+                  <label for="old-security-answer">
+                    <span class="label-icon">🔐</span>
+                    旧密保问题答案
+                  </label>
+                  <input
+                      type="text"
+                      id="old-security-answer"
+                      v-model="editForm.oldSecurityAnswer"
+                      placeholder="请输入当前密保问题的答案"
+                      @input="handleInput('security')"
+                  />
+                  <p v-if="fieldError && fieldError.field === 'oldSecurityAnswer'" class="error-message">
+                    {{ fieldError.message }}
+                  </p>
+                </div>
+                
+                <!-- 新密保问题选择 -->
                 <div class="form-group">
                   <label for="security-question-select">
                     <span class="label-icon">❓</span>
-                    选择密保问题
+                    选择新密保问题
                   </label>
                   <select
                       id="security-question-select"
                       v-model="editForm.securityQuestionId"
                       class="security-question-select"
+                      @change="handleInput('security')"
                   >
                     <option value="">请选择密保问题</option>
                     <option v-for="question in securityQuestions" :key="question.id" :value="question.id">
@@ -430,18 +450,27 @@
                   </select>
                 </div>
                 
+                <!-- 新密保问题答案 -->
                 <div class="form-group">
                   <label for="security-answer-input">
                     <span class="label-icon">✏️</span>
-                    答案
+                    新密保问题答案
                   </label>
                   <input
                       type="text"
                       id="security-answer-input"
                       v-model="editForm.securityAnswer"
-                      placeholder="请输入密保问题答案"
+                      placeholder="请输入新密保问题的答案"
                       @input="handleInput('security')"
                   />
+                  <p v-if="fieldError && fieldError.field === 'securityAnswer'" class="error-message">
+                    {{ fieldError.message }}
+                  </p>
+                </div>
+                
+                <div class="security-tip">
+                  <span class="tip-icon">⚠️</span>
+                  修改密保问题需要验证旧答案，请确保您记得当前的密保问题答案
                 </div>
                 
                 <div class="button-group">
@@ -531,6 +560,7 @@ const contentArea = ref(null)
 // 滚动防抖定时器
 let scrollTimeout = null
 let highlightTimeout = null
+let isScrollDisabled = false  // ✅ 新增：标记是否禁用滚动检测
 
 // 表单数据
 const editForm = ref({
@@ -542,8 +572,9 @@ const editForm = ref({
   oldPassword: '',
   newPassword: '',
   confirmPassword: '',
+  oldSecurityAnswer: '',  // 旧密保问题答案
   securityQuestionId: '',  // 密保问题 ID
-  securityAnswer: ''  // 密保答案
+  securityAnswer: ''  // 新密保答案
 })
 
 // 用户信息（从后端获取）
@@ -792,8 +823,11 @@ const isFieldValid = (field) => {
            editForm.value.phoneVerificationCode &&
            phoneSessionId.value
   } else if (field === 'security') {
-    // 密保问题需要验证问题ID和答案
-    return editForm.value.securityQuestionId && 
+    // 密保问题需要验证旧答案、新问题ID和新答案
+    return editForm.value.oldSecurityAnswer && 
+           editForm.value.oldSecurityAnswer.trim().length > 0 &&
+           editForm.value.securityQuestionId && 
+           editForm.value.securityAnswer &&
            editForm.value.securityAnswer.trim().length > 0
   }
   // 其他字段：有变化即为有效
@@ -863,6 +897,7 @@ const startEdit = async (field) => {
     await loadRsaKey('password')
   } else if (field === 'security') {
     // 密保问题编辑
+    editForm.value.oldSecurityAnswer = ''
     editForm.value.securityQuestionId = ''
     editForm.value.securityAnswer = ''
     
@@ -921,6 +956,7 @@ const cancelEdit = (field) => {
   // 清理密保问题相关状态
   if (field === 'security') {
     clearPurposeSessionId('security')
+    editForm.value.oldSecurityAnswer = ''
     editForm.value.securityQuestionId = ''
     editForm.value.securityAnswer = ''
     securityRsaPublicKey.value = ''  // ✅ 清除密保问题专用 RSA 密钥
@@ -1018,13 +1054,23 @@ const validateSpecificField = (field) => {
       return ''
     
     case 'security':
+      const oldSecurityAnswer = editForm.value.oldSecurityAnswer
       const securityQuestionId = editForm.value.securityQuestionId
       const securityAnswer = editForm.value.securityAnswer
       
+      // 验证旧答案
+      if (!oldSecurityAnswer || oldSecurityAnswer.trim() === '') {
+        return { field: 'oldSecurityAnswer', message: '请输入旧密保问题答案' }
+      }
+      
+      // 验证新问题 ID
       if (!securityQuestionId) {
-        return { field: 'securityQuestionId', message: '请选择密保问题' }
-      } else if (!securityAnswer || securityAnswer.trim() === '') {
-        return { field: 'securityAnswer', message: '请输入密保问题答案' }
+        return { field: 'securityQuestionId', message: '请选择新密保问题' }
+      }
+      
+      // 验证新答案
+      if (!securityAnswer || securityAnswer.trim() === '') {
+        return { field: 'securityAnswer', message: '请输入新密保问题答案' }
       }
       
       return ''
@@ -1393,10 +1439,12 @@ const saveField = async (field) => {
       }
     } else if (field === 'security') {
       // 密保问题修改逻辑
+      const oldSecurityAnswer = editForm.value.oldSecurityAnswer
       const newSecurityQuestionId = parseInt(editForm.value.securityQuestionId)
       const securityAnswer = editForm.value.securityAnswer
       
       logger.info('准备修改密保问题:', {
+        oldSecurityAnswerLength: oldSecurityAnswer?.length,
         newSecurityQuestionId,
         securityAnswerLength: securityAnswer?.length
       })
@@ -1413,18 +1461,21 @@ const saveField = async (field) => {
         }
       }
       
-      // 使用密保问题专用的 RSA 密钥加密答案
-      const encryptedAnswer = encryptPassword(securityAnswer, securityRsaPublicKey.value)
+      // 使用密保问题专用的 RSA 密钥加密旧答案和新答案
+      const encryptedOldAnswer = encryptPassword(oldSecurityAnswer, securityRsaPublicKey.value)
+      const encryptedNewAnswer = encryptPassword(securityAnswer, securityRsaPublicKey.value)
       
       // 构造请求数据（根据项目记忆，使用序号而非 ID）
       const requestData = {
+        oldSecurityAnswer: encryptedOldAnswer,  // ✅ 加密的旧答案
         securityQuestionId: newSecurityQuestionId,  // 使用序号（1, 2, 3...）
-        encryptedSecurityAnswer: encryptedAnswer
+        newSecurityAnswer: encryptedNewAnswer  // ✅ 加密的新答案
       }
       
       logger.info('发送密保问题修改请求:', { 
         securityQuestionId: newSecurityQuestionId,
-        encryptedAnswer: encryptedAnswer.substring(0, 50) + '...'
+        hasOldAnswer: !!oldSecurityAnswer,
+        hasNewAnswer: !!securityAnswer
       })
       
       // 发送 POST 请求到 /profile/security_question/set
@@ -1460,6 +1511,7 @@ const saveField = async (field) => {
         editingFields.value.delete('security')
         fieldError.value = ''
         clearPurposeSessionId('security')
+        editForm.value.oldSecurityAnswer = ''
         editForm.value.securityQuestionId = ''
         editForm.value.securityAnswer = ''
         securityRsaPublicKey.value = ''  // ✅ 清除密保问题专用 RSA 密钥
@@ -1802,6 +1854,19 @@ const checkChanges = () => {
 const scrollToSection = (section) => {
   const element = document.getElementById(`section-${section}`)
   if (element && contentArea.value) {
+    // ✅ 清除之前的滚动防抖计时器
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout)
+      scrollTimeout = null
+    }
+    
+    // ✅ 禁用滚动检测 800ms
+    isScrollDisabled = true
+    setTimeout(() => {
+      isScrollDisabled = false
+      logger.debug('滚动检测已重新启用')
+    }, 800)
+    
     // 清除之前的高亮
     if (highlightTimeout) {
       clearTimeout(highlightTimeout)
@@ -1839,8 +1904,15 @@ const scrollToSection = (section) => {
 
 /**
  * 处理滚动事件，自动更新激活的选项卡
+ * 注意：只在滚动停止后更新 activeTab，不触发高亮效果
  */
 const handleScroll = () => {
+  // ✅ 如果禁用了滚动检测，直接返回
+  if (isScrollDisabled) {
+    logger.debug('滚动检测已禁用（点击选项卡后 800ms 内）')
+    return
+  }
+  
   if (scrollTimeout) {
     clearTimeout(scrollTimeout)
   }
@@ -1851,24 +1923,33 @@ const handleScroll = () => {
     const sections = ['avatar', 'basic', 'contact', 'password', 'security', 'info']
     const scrollTop = contentArea.value.scrollTop
     
-    // 找到当前可见的区块
-    for (let i = sections.length - 1; i >= 0; i--) {
+    // 找到当前可见的区块（最顶端的）
+    let currentSection = sections[0]
+    for (let i = 0; i < sections.length; i++) {
       const section = sections[i]
       const element = document.getElementById(`section-${section}`)
       
       if (element) {
         const offsetTop = element.offsetTop
         
-        // 如果滚动位置超过该区块的顶部，则激活该区块
+        // 如果滚动位置超过该区块的顶部，则记录该区块
         if (scrollTop >= offsetTop - 100) {
-          if (activeTab.value !== section) {
-            activeTab.value = section
-          }
+          currentSection = section
+        } else {
+          // 找到第一个未超过的区块，停止搜索
           break
         }
       }
     }
-  }, 100)
+    
+    // 只更新 activeTab，不触发高亮效果
+    if (activeTab.value !== currentSection) {
+      activeTab.value = currentSection
+    }
+    
+    // ✅ 清除定时器，但不改变 isScrollDisabled 状态
+    scrollTimeout = null
+  }, 800) // 800ms 防抖，滚动停止后才更新
 }
 
 /**

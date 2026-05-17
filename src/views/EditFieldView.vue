@@ -49,6 +49,14 @@
               <span class="tab-icon">🔒</span>
               <span class="tab-text">密码</span>
             </button>
+            <button
+                class="tab-item"
+                :class="{ active: currentField === 'security' }"
+                @click="switchField('security')"
+            >
+              <span class="tab-icon">❓</span>
+              <span class="tab-text">密保问题</span>
+            </button>
           </nav>
         </aside>
 
@@ -198,6 +206,85 @@
               </div>
             </div>
           </div>
+
+          <!-- 密保问题编辑 -->
+          <div id="section-security" :class="['tab-pane', { 'active': currentField === 'security' }]">
+            <div class="content-card">
+              <h2 class="card-title">
+                <span class="icon">❓</span>
+                修改密保问题
+              </h2>
+              
+              <!-- 旧密保问题答案 -->
+              <div class="form-group">
+                <label for="old-security-answer">
+                  <span class="label-icon">🔐</span>
+                  旧密保问题答案
+                </label>
+                <input
+                    type="text"
+                    id="old-security-answer"
+                    v-model="oldSecurityAnswer"
+                    placeholder="请输入当前密保问题的答案"
+                    @input="handleInput"
+                />
+                <p v-if="oldAnswerError" class="error-message">
+                  {{ oldAnswerError }}
+                </p>
+              </div>
+              
+              <!-- 新密保问题选择 -->
+              <div class="form-group">
+                <label for="security-question-select">
+                  <span class="label-icon">❓</span>
+                  选择新密保问题
+                </label>
+                <select
+                    id="security-question-select"
+                    v-model="selectedQuestionId"
+                    class="security-question-select"
+                    @change="handleInput"
+                >
+                  <option value="">请选择密保问题</option>
+                  <option v-for="question in securityQuestions" :key="question.id" :value="question.id">
+                    {{ question.question }}
+                  </option>
+                </select>
+              </div>
+              
+              <!-- 新密保问题答案 -->
+              <div class="form-group">
+                <label for="new-security-answer">
+                  <span class="label-icon">✏️</span>
+                  新密保问题答案
+                </label>
+                <input
+                    type="text"
+                    id="new-security-answer"
+                    v-model="editValue"
+                    placeholder="请输入新密保问题的答案"
+                    @input="handleInput"
+                />
+                <p v-if="errorMessage" class="error-message">
+                  {{ errorMessage }}
+                </p>
+              </div>
+              
+              <div class="security-tip">
+                <span class="tip-icon">⚠️</span>
+                修改密保问题需要验证旧答案，请确保您记得当前的密保问题答案
+              </div>
+              
+              <div class="button-group">
+                <button class="btn btn-cancel" @click="goBack">
+                  取消
+                </button>
+                <button class="btn btn-save" @click="handleSave" :disabled="isSaving || !isValid">
+                  {{ isSaving ? '保存中...' : '保存' }}
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -209,7 +296,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { createLogger } from '@/utils/logger'
 import { getToken } from '@/utils/auth'
-import { USER_API } from '@/config/api'
+import { USER_API, PROFILE_API } from '@/config/api'
 
 const logger = createLogger('EditFieldView')
 const router = useRouter()
@@ -222,10 +309,13 @@ const currentField = ref('nickname')
 const contentArea = ref(null)
 
 // 表单数据
-const editValue = ref('')
+const editValue = ref('')  // 新密保问题答案（用于 security 字段）
+const oldSecurityAnswer = ref('')  // 旧密保问题答案
+const selectedQuestionId = ref('')  // 选中的新问题 ID
 const originalValue = ref('')
 const isSaving = ref(false)
 const errorMessage = ref('')
+const oldAnswerError = ref('')  // 旧答案错误提示
 
 // 页面标题
 const pageTitle = computed(() => {
@@ -233,31 +323,43 @@ const pageTitle = computed(() => {
     nickname: '修改昵称',
     email: '修改邮箱',
     phone: '修改手机号',
-    password: '修改密码'
+    password: '修改密码',
+    security: '修改密保问题'
   }
   return titles[currentField.value] || '编辑信息'
 })
 
+// 密保问题列表
+const securityQuestions = ref([])
+
 // 验证是否有效
 const isValid = computed(() => {
+  if (currentField.value === 'security') {
+    // 密保问题需要验证：旧答案、新问题ID、新答案
+    return !errorMessage.value && 
+           !oldAnswerError.value && 
+           oldSecurityAnswer.value.trim() !== '' &&
+           selectedQuestionId.value !== '' &&
+           editValue.value.trim() !== ''
+  }
   return !errorMessage.value && editValue.value !== originalValue.value && editValue.value.trim() !== ''
 })
 
 /**
  * 切换字段
  */
-const switchField = (field) => {
+const switchField = async (field) => {
   if (currentField.value === field) return
   
   // 如果有未保存的更改，提示用户
-  if (editValue.value !== originalValue.value) {
+  if (editValue.value !== originalValue.value || oldSecurityAnswer.value) {
     if (!confirm('有未保存的更改，确定要切换吗？')) {
       return
     }
   }
   
   currentField.value = field
-  loadCurrentValue(field)
+  await loadCurrentValue(field)
 }
 
 /**
@@ -271,6 +373,24 @@ const handleInput = () => {
  * 验证输入
  */
 const validateInput = () => {
+  if (currentField.value === 'security') {
+    // 密保问题特殊验证
+    oldAnswerError.value = ''
+    errorMessage.value = ''
+    
+    if (!oldSecurityAnswer.value.trim()) {
+      oldAnswerError.value = '请输入旧密保问题答案'
+    }
+    
+    if (!selectedQuestionId.value) {
+      errorMessage.value = '请选择新密保问题'
+    } else if (!editValue.value.trim()) {
+      errorMessage.value = '请输入新密保问题答案'
+    }
+    
+    return
+  }
+  
   const value = editValue.value
   
   switch (currentField.value) {
@@ -331,7 +451,11 @@ const validateInput = () => {
  * 返回上一页
  */
 const goBack = () => {
-  if (editValue.value !== originalValue.value) {
+  const hasChanges = currentField.value === 'security' 
+    ? (oldSecurityAnswer.value || selectedQuestionId.value || editValue.value)
+    : (editValue.value !== originalValue.value)
+  
+  if (hasChanges) {
     if (confirm('有未保存的更改，确定要离开吗？')) {
       router.back()
     }
@@ -343,7 +467,7 @@ const goBack = () => {
 /**
  * 加载当前值
  */
-const loadCurrentValue = (field) => {
+const loadCurrentValue = async (field) => {
   if (field === 'nickname') {
     originalValue.value = localStorage.getItem('username') || ''
   } else if (field === 'email') {
@@ -352,6 +476,16 @@ const loadCurrentValue = (field) => {
     originalValue.value = localStorage.getItem('userPhone') || ''
   } else if (field === 'password') {
     originalValue.value = ''
+  } else if (field === 'security') {
+    // 密保问题需要加载问题列表
+    await loadSecurityQuestions()
+    oldSecurityAnswer.value = ''
+    selectedQuestionId.value = ''
+    editValue.value = ''
+    errorMessage.value = ''
+    oldAnswerError.value = ''
+    logger.info('加载密保问题列表')
+    return  // 直接返回，不需要设置 editValue
   }
   
   editValue.value = originalValue.value
@@ -360,17 +494,53 @@ const loadCurrentValue = (field) => {
 }
 
 /**
+ * 加载密保问题列表
+ */
+const loadSecurityQuestions = async () => {
+  try {
+    const token = getToken()
+    if (!token) {
+      logger.error('用户未登录')
+      return
+    }
+    
+    logger.info('开始获取密保问题列表...')
+    
+    const response = await fetch(USER_API.SECURITY_QUESTIONS, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    if (response.ok) {
+      const result = await response.json()
+      logger.info('密保问题列表:', result)
+      
+      if (result.success && result.data) {
+        securityQuestions.value = result.data
+        logger.info(`已加载 ${securityQuestions.value.length} 个密保问题`)
+      }
+    } else {
+      logger.error('获取密保问题列表失败:', response.status)
+    }
+  } catch (error) {
+    logger.error('加载密保问题列表失败:', error)
+  }
+}
+
+/**
  * 保存修改
  */
 const handleSave = async () => {
   // 验证
   validateInput()
-  if (errorMessage.value) {
-    alert(errorMessage.value)
+  if (errorMessage.value || oldAnswerError.value) {
+    alert(errorMessage.value || oldAnswerError.value)
     return
   }
 
-  if (editValue.value === originalValue.value) {
+  if (currentField.value !== 'security' && editValue.value === originalValue.value) {
     alert('内容未发生变化')
     return
   }
@@ -385,25 +555,84 @@ const handleSave = async () => {
       return
     }
 
-    // 构造请求数据
-    const requestData = {
-      [currentField.value]: editValue.value
+    let response, result
+    
+    // 密保问题特殊处理
+    if (currentField.value === 'security') {
+      // 检查 RSA 密钥
+      const rsaKeyResponse = await fetch(USER_API.RSA_KEY, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      
+      if (!rsaKeyResponse.ok) {
+        alert('获取加密密钥失败')
+        return
+      }
+      
+      const rsaResult = await rsaKeyResponse.json()
+      const publicKey = rsaResult.data?.publicKey
+      
+      if (!publicKey) {
+        alert('系统初始化失败，请刷新页面重试')
+        return
+      }
+      
+      // 导入 RSA 加密函数
+      const { encryptPassword } = await import('@/utils/rsa')
+      
+      // 加密旧答案和新答案
+      const encryptedOldAnswer = encryptPassword(oldSecurityAnswer.value, publicKey)
+      const encryptedNewAnswer = encryptPassword(editValue.value, publicKey)
+      
+      // 构造请求数据
+      const requestData = {
+        oldSecurityAnswer: encryptedOldAnswer,
+        securityQuestionId: parseInt(selectedQuestionId.value),
+        newSecurityAnswer: encryptedNewAnswer
+      }
+      
+      logger.info('发送密保问题修改请求:', {
+        securityQuestionId: selectedQuestionId.value,
+        hasOldAnswer: !!oldSecurityAnswer.value,
+        hasNewAnswer: !!editValue.value
+      })
+      
+      // 发送 POST 请求到 /profile/security_question/set
+      response = await fetch(PROFILE_API.SET_SECURITY_QUESTION, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      })
+      
+      result = await response.json()
+      logger.info('密保问题修改响应:', result)
+    } else {
+      // 其他字段的处理
+      const requestData = {
+        [currentField.value]: editValue.value
+      }
+
+      logger.info(`发送${currentField.value}修改请求:`, requestData)
+
+      // 发送请求到后端
+      response = await fetch(USER_API.UPDATE_PROFILE, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      })
+
+      result = await response.json()
+      logger.info(`${currentField.value}修改响应:`, result)
     }
-
-    logger.info(`发送${currentField.value}修改请求:`, requestData)
-
-    // 发送请求到后端
-    const response = await fetch(USER_API.UPDATE_PROFILE, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(requestData)
-    })
-
-    const result = await response.json()
-    logger.info(`${currentField.value}修改响应:`, result)
 
     if (response.ok && result.success === true) {
       alert(result.message || '修改成功！')
@@ -433,11 +662,11 @@ const handleSave = async () => {
 /**
  * 组件挂载时加载当前值
  */
-onMounted(() => {
+onMounted(async () => {
   // 从路由参数获取字段类型
   const field = route.query.field || 'nickname'
   currentField.value = field
-  loadCurrentValue(field)
+  await loadCurrentValue(field)
 })
 </script>
 
@@ -643,6 +872,24 @@ onMounted(() => {
 }
 
 .form-group input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* 下拉选择框 */
+.security-question-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid #e8e8e8;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  outline: none;
+  background: white;
+  cursor: pointer;
+}
+
+.security-question-select:focus {
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
