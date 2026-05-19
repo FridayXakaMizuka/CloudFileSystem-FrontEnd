@@ -199,7 +199,8 @@ import { getCachedUserInfo } from '@/utils/userInfo'
 const logger = createLogger('BrowseView')
 
 // 视图模式：'grid' 网格视图，'list' 列表视图
-const viewMode = ref('grid')
+// 从 sessionStorage 读取保存的视图模式，默认为 'grid'
+const viewMode = ref(sessionStorage.getItem('browseViewMode') || 'grid')
 
 // 搜索关键词
 const searchKeyword = ref('')
@@ -272,6 +273,8 @@ const getFileTypeLabel = (type) => {
  */
 const toggleView = () => {
   viewMode.value = viewMode.value === 'grid' ? 'list' : 'grid'
+  // 保存视图模式到 sessionStorage
+  sessionStorage.setItem('browseViewMode', viewMode.value)
   logger.info('切换视图模式:', viewMode.value)
 }
 
