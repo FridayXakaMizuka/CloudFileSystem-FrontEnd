@@ -65,6 +65,16 @@
     <!-- 搜索框区域 -->
     <div class="search-section">
       <div class="search-box">
+        <!-- 视图切换开关（竖屏时显示在搜索框左侧） -->
+        <div class="view-toggle-switch-search" @click="toggleView">
+          <div class="switch-track">
+            <div class="switch-icons">
+              <span class="icon-grid" :class="{ active: viewMode === 'grid' }">⊞</span>
+              <span class="icon-list" :class="{ active: viewMode === 'list' }">☰</span>
+            </div>
+            <div class="switch-slider" :class="{ 'slider-right': viewMode === 'list' }"></div>
+          </div>
+        </div>
         <input 
           type="text" 
           v-model="searchKeyword"
@@ -545,6 +555,14 @@ onMounted(() => {
 /* 移动端视图切换开关（竖屏时显示在标题右侧） */
 .view-toggle-switch-mobile {
   display: none; /* 横屏时隐藏 */
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* 搜索框区域的视图切换开关（竖屏时显示在搜索框左侧） */
+.view-toggle-switch-search {
+  display: none; /* 默认隐藏 */
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
@@ -1251,6 +1269,11 @@ onMounted(() => {
     padding: 1rem; /* 四周 16px 内边距 */
   }
 
+  /* 搜索框区域内边距与头部保持一致 */
+  .search-section {
+    padding: 1rem; /* 四周 16px 内边距 */
+  }
+
   /* 标题大小调整 */
   .title {
     font-size: 1.5rem;
@@ -1280,9 +1303,42 @@ onMounted(() => {
     padding-right: 1rem; /* 与右侧工具栏保持1rem间隙 */
   }
 
-  /* 移动端视图切换开关：竖屏时显示 */
+  /* 移动端视图切换开关：竖屏时隐藏 */
   .view-toggle-switch-mobile {
+    display: none;
+  }
+
+  /* 搜索框区域视图切换开关：竖屏时显示 */
+  .view-toggle-switch-search {
     display: block;
+  }
+
+  /* 搜索框区域开关样式（缩小至与搜索按钮高度一致） */
+  .view-toggle-switch-search .switch-track {
+    width: 62px; /* 按比例缩小：75px * (33/40) ≈ 62px */
+    height: 33px; /* 与搜索按钮高度一致 */
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+
+  .view-toggle-switch-search .switch-slider {
+    width: calc(56%);
+    height: calc(100%);
+    border-radius: 3px;
+    margin: 1px;
+    top: -1px;
+    left: -3px;
+    transform: translateX(0);
+  }
+
+  .view-toggle-switch-search .switch-slider.slider-right {
+    transform: translateX(90%);
+  }
+
+  .view-toggle-switch-search .switch-icons span {
+    font-size: 1rem; /* 按比例缩小图标 */
+    width: calc(50% - 1px);
+    height: 33px; /* 与轨道高度一致 */
   }
 
   /* 横屏视图切换开关：竖屏时隐藏 */
