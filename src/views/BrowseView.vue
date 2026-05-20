@@ -9,6 +9,12 @@
         <div class="header-left">
           <div class="title-wrapper">
             <h2 class="title">文件浏览</h2>
+            <!-- 返回上一级按钮 -->
+            <button class="btn-back" @click="handleGoBack" title="返回上一级">
+              <span class="back-icon">⬆</span>
+              <span class="back-text-full">返回上一级</span>
+              <span class="back-text-short"></span>
+            </button>
             <!-- 视图切换开关（竖屏时显示在标题右侧） -->
             <div class="view-toggle-switch-mobile" @click="toggleView">
               <div class="switch-track">
@@ -279,6 +285,15 @@ const toggleView = () => {
 }
 
 /**
+ * 处理返回上一级操作
+ */
+const handleGoBack = () => {
+  logger.info('返回上一级')
+  // TODO: 实现返回上一级逻辑
+  alert('返回上一级功能待实现')
+}
+
+/**
  * 处理搜索操作
  */
 const handleSearch = () => {
@@ -476,14 +491,55 @@ onMounted(() => {
   color: #333; /* 深灰色文字 */
   font-size: 1.75rem; /* 字体大小 28px */
   font-weight: 600; /* 字体粗细：半粗体 */
+  line-height: 1.5; /* 设置行高，实际高度为 2.625rem */
 }
 
 /* 标题包装器（竖屏时包含标题和开关） */
 .title-wrapper {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   width: 100%;
+}
+
+/* 返回上一级按钮 */
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 1rem;
+  height: 2.625rem; /* 与标题字体高度一致：1.75rem * 1.5 = 2.625rem */
+  line-height: 1;
+  background: white;
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  color: #667eea;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-back:hover {
+  background: #667eea;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.back-icon {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.back-text-full {
+  display: inline;
+}
+
+.back-text-short {
+  display: none;
 }
 
 /* 移动端视图切换开关（竖屏时显示在标题右侧） */
@@ -1083,8 +1139,27 @@ onMounted(() => {
   }
 }
 
-/* 窄屏（885px < 宽度 ≤ 930px）：隐藏修改时间列，显示大小列 */
-@media (max-width: 930px) and (min-width: 886px) {
+/* 中等屏幕（885px < 宽度 ≤ 1024px）：返回按钮只显示图标 */
+@media (max-width: 1024px) and (min-width: 931px) {
+  /* 返回上一级按钮：只显示图标，宽度等于高度 */
+  .btn-back {
+    padding: 0;
+    height: 2.25rem;
+    width: 2.25rem; /* 宽度等于高度，形成正方形 */
+    justify-content: center; /* 图标居中 */
+  }
+
+  .back-text-full {
+    display: none;
+  }
+
+  .back-text-short {
+    display: none;
+  }
+}
+
+/* 窄屏（768px < 宽度 ≤ 930px）：隐藏修改时间列，显示大小列 */
+@media (max-width: 930px) and (min-width: 769px) {
   /* ========== 列表视图样式调整 ========= */
 
   /* 缩小列表内边距 */
@@ -1169,8 +1244,8 @@ onMounted(() => {
   }
 }
 
-/* 移动端与横屏过窄（屏幕宽度 ≤ 885px）响应式适配 */
-@media (max-width: 885px) {
+/* 移动端与横屏过窄（屏幕宽度 ≤ 930px）响应式适配 */
+@media (max-width: 930px) {
   /* 缩小标题栏内边距 */
   .browse-header {
     padding: 1rem; /* 四周 16px 内边距 */
@@ -1183,7 +1258,21 @@ onMounted(() => {
 
   /* 标题包装器：竖屏时显示开关 */
   .title-wrapper {
-    gap: 0.75rem;
+    gap: 0.5rem;
+  }
+
+  /* 返回上一级按钮：中等屏幕只显示图标 */
+  .btn-back {
+    padding: 0 0.75rem;
+    height: 2.25rem; /* 与缩小后的标题高度匹配 */
+  }
+
+  .back-text-full {
+    display: none;
+  }
+
+  .back-text-short {
+    display: none;
   }
 
   /* 头部左侧：竖屏时与右侧按钮保持1rem间距 */
@@ -1198,6 +1287,21 @@ onMounted(() => {
 
   /* 横屏视图切换开关：竖屏时隐藏 */
   .view-toggle-switch {
+    display: none;
+  }
+
+  /* 返回上一级按钮：小屏幕显示完整文字 */
+  .btn-back {
+    padding: 0 0.85rem;
+    height: 2.25rem; /* 与缩小后的标题高度匹配 */
+    font-size: 0.85rem;
+  }
+
+  .back-text-full {
+    display: inline;
+  }
+
+  .back-text-short {
     display: none;
   }
 
