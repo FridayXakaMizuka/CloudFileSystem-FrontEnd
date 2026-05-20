@@ -133,10 +133,22 @@
           <thead>
             <tr>
               <th class="col-icon"></th>
-              <th class="col-name">名称</th>
-              <th class="col-size">大小</th>
-              <th class="col-created">创建时间</th>
-              <th class="col-date">修改时间</th>
+              <th class="col-name" @click="handleSort(0)" style="cursor: pointer;">
+                名称
+                <span v-if="sortedBy === 0" class="sort-indicator">{{ order === 0 ? '↑' : '↓' }}</span>
+              </th>
+              <th class="col-size" @click="handleSort(1)" style="cursor: pointer;">
+                大小
+                <span v-if="sortedBy === 1" class="sort-indicator">{{ order === 0 ? '↑' : '↓' }}</span>
+              </th>
+              <th class="col-created" @click="handleSort(2)" style="cursor: pointer;">
+                创建时间
+                <span v-if="sortedBy === 2" class="sort-indicator">{{ order === 0 ? '↑' : '↓' }}</span>
+              </th>
+              <th class="col-date" @click="handleSort(3)" style="cursor: pointer;">
+                修改时间
+                <span v-if="sortedBy === 3" class="sort-indicator">{{ order === 0 ? '↑' : '↓' }}</span>
+              </th>
               <th class="col-actions">操作</th>
             </tr>
           </thead>
@@ -203,37 +215,65 @@
         </table>
       </div>
     </div>
+
+    <!-- 加载更多/到底提示 -->
+    <div ref="loadMoreTrigger" class="load-more-trigger">
+      <div v-if="isLoading" class="loading-indicator">
+        <span class="loading-spinner">⏳</span>
+        <span>加载中...</span>
+      </div>
+      <div v-else-if="!hasMore && files.length > 0" class="end-indicator">
+        <span>已经到底啦~ 🎉</span>
+      </div>
+      <div v-else-if="loadError" class="error-indicator">
+        <span>⚠️ {{ loadError }}</span>
+        <button @click="handleRetryLoad" class="btn-retry">重试</button>
+      </div>
+    </div>
   </div>
 </template>
 
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { createLogger } from '@/utils/logger'
 import { getCachedUserInfo } from '@/utils/userInfo'
+import { 
+  browseState, 
+  getCurrentNodeId,
+  setCurrentNodeId,
+  initBrowse,
+  loadMoreFiles,
+  calculateMaxPageSize
+} from '@/utils/directory'
 
 const logger = createLogger('BrowseView')
 
 // 视图模式：'grid' 网格视图，'list' 列表视图
-// 从 sessionStorage 读取保存的视图模式，默认为 'grid'
 const viewMode = ref(sessionStorage.getItem('browseViewMode') || 'grid')
 
 // 搜索关键词
 const searchKeyword = ref('')
 
-// 文件列表数据（模拟数据）
-const files = ref([
-  { id: 1, name: '工作文档', type: 'folder', size: 0, date: '2024-01-15', createdDate: '2024-01-10' },
-  { id: 2, name: '项目资料', type: 'folder', size: 0, date: '2024-01-14', createdDate: '2024-01-08' },
-  { id: 3, name: '报告.pdf', type: 'pdf', size: 2048576, date: '2024-01-13', createdDate: '2024-01-05' },
-  { id: 4, name: '演示文稿.pptx', type: 'ppt', size: 5242880, date: '2024-01-12', createdDate: '2024-01-03' },
-  { id: 5, name: '数据表格.xlsx', type: 'excel', size: 1048576, date: '2024-01-11', createdDate: '2024-01-01' },
-  { id: 6, name: '照片.jpg', type: 'image', size: 3145728, date: '2024-01-10', createdDate: '2023-12-28' },
-])
+// 文件列表数据（从 browseState 获取）
+const files = computed(() => browseState.files)
+
+// 加载状态
+const isLoading = computed(() => browseState.isLoading)
+const hasMore = computed(() => browseState.hasMore)
+const loadError = ref(null)
+
+// 排序状态
+const sortedBy = computed(() => browseState.sortedBy)
+const order = computed(() => browseState.order)
 
 // 存储空间信息
 const storageUsed = ref('0 GB')
 const storageTotal = ref('10 GB')
+
+//  Intersection Observer for infinite scroll
+let observer = null
+const loadMoreTrigger = ref(null)
 
 /**
  * 计算属性：存储空间使用百分比
@@ -244,6 +284,119 @@ const storagePercentage = computed(() => {
   if (total === 0) return 0
   return Math.min((used / total) * 100, 100)
 })
+
+/**
+ * 计算maxPageSize
+ */
+const getMaxPageSize = () => {
+  if (viewMode.value === 'list') {
+    return 10
+  } else {
+    // 网格视图：需要计算每行显示数和最后一行空缺
+    // 这里简化处理，实际应根据容器宽度动态计算
+    const containerWidth = window.innerWidth - 64 // 减去padding
+    const itemMinWidth = 190
+    const itemsPerRow = Math.floor(containerWidth / (itemMinWidth + 24)) // 24是gap
+    const totalItems = files.value.length
+    const fullRows = Math.floor(totalItems / itemsPerRow)
+    const lastRowItems = totalItems % itemsPerRow
+    const emptySlots = lastRowItems > 0 ? itemsPerRow - lastRowItems : 0
+    
+    return itemsPerRow * 3 + emptySlots
+  }
+}
+
+/**
+ * 初始化加载目录
+ */
+const loadDirectory = async () => {
+  try {
+    loadError.value = null
+    
+    // 检查是否有currentNodeId
+    let currentNodeId = getCurrentNodeId()
+    
+    // 如果没有，尝试从用户信息中获取homeDirectoryId
+    if (!currentNodeId) {
+      logger.info('未找到currentNodeId，尝试从用户信息获取homeDirectoryId')
+      const cachedUserInfo = getCachedUserInfo()
+      
+      if (cachedUserInfo && cachedUserInfo.homeDirectoryId) {
+        currentNodeId = cachedUserInfo.homeDirectoryId
+        setCurrentNodeId(currentNodeId)
+        logger.info('从用户信息设置currentNodeId:', currentNodeId)
+      } else {
+        logger.error('无法获取homeDirectoryId')
+        loadError.value = '无法获取目录信息，请重新登录'
+        return
+      }
+    }
+    
+    // 计算maxPageSize
+    const maxPageSize = getMaxPageSize()
+    
+    // 调用初始化浏览
+    const result = await initBrowse(maxPageSize)
+    
+    if (!result.success) {
+      loadError.value = result.message || '加载失败'
+      logger.error('加载目录失败:', result.message)
+    } else {
+      logger.info('目录加载成功', { count: files.value.length })
+    }
+  } catch (error) {
+    logger.error('加载目录异常:', error)
+    loadError.value = '网络错误，请稍后重试'
+  }
+}
+
+/**
+ * 加载更多
+ */
+const handleLoadMore = async () => {
+  if (isLoading.value || !hasMore.value) {
+    return
+  }
+  
+  try {
+    loadError.value = null
+    const maxPageSize = getMaxPageSize()
+    const result = await loadMoreFiles(maxPageSize)
+    
+    if (!result.success) {
+      loadError.value = result.message || '加载失败'
+      logger.error('加载更多失败:', result.message)
+    }
+  } catch (error) {
+    logger.error('加载更多异常:', error)
+    loadError.value = '网络错误，请稍后重试'
+  }
+}
+
+/**
+ * 重试加载
+ */
+const handleRetryLoad = () => {
+  if (files.value.length === 0) {
+    // 首次加载失败，重新初始化
+    loadDirectory()
+  } else {
+    // 加载更多失败，重试加载
+    handleLoadMore()
+  }
+}
+
+/**
+ * 处理排序点击
+ * @param {number} columnSortedBy - 列对应的sortedBy值
+ */
+const handleSort = async (columnSortedBy) => {
+  // 更新排序状态（会自动清空排除项、重置游标）
+  browseState.updateSort(columnSortedBy)
+  
+  // 重新加载
+  await loadDirectory()
+}
 
 /**
  * 根据文件类型获取对应的图标
@@ -333,6 +486,9 @@ const formatFileSize = (bytes) => {
  * 处理上传文件操作
  */
 const handleUpload = () => {
+  // TODO: 实现文件上传功能
+  // TODO: 上传成功后，调用 browseState.addExcludeFileId(fileId) 将新文件ID添加到排除列表
+  
   alert('上传文件功能待实现')
 }
 
@@ -342,7 +498,10 @@ const handleUpload = () => {
 const handleNewFolder = () => {
   const name = prompt('请输入文件夹名称：')
   if (name) {
-    // 在列表开头插入新文件夹
+    // TODO: 调用后端API创建文件夹，获取返回的folderId
+    // TODO: 调用 browseState.addExcludeFolderId(folderId) 将新文件夹ID添加到排除列表
+    
+    // 临时在列表开头插入新文件夹（待API实现后移除）
     files.value.unshift({
       id: Date.now(),
       name: name,
@@ -412,9 +571,43 @@ const loadStorageInfo = () => {
   }
 }
 
-// 组件挂载时加载存储信息
+/**
+ * 设置Intersection Observer用于无限滚动
+ */
+const setupIntersectionObserver = () => {
+  if (observer) {
+    observer.disconnect()
+  }
+  
+  observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !isLoading.value && hasMore.value && !loadError.value) {
+      handleLoadMore()
+    }
+  }, {
+    rootMargin: '100px' // 提前100px开始加载
+  })
+  
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value)
+  }
+}
+
+// 组件挂载时加载数据
 onMounted(() => {
   loadStorageInfo()
+  loadDirectory()
+  
+  // 等待DOM更新后设置Intersection Observer
+  setTimeout(() => {
+    setupIntersectionObserver()
+  }, 100)
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect()
+  }
 })
 </script>
 
@@ -903,6 +1096,17 @@ onMounted(() => {
   font-size: 0.9rem; /* 字体大小 14.4px */
   border-bottom: 2px solid #e8e8e8; /* 底部边框 */
   white-space: nowrap; /* 不换行 */
+  user-select: none; /* 禁止选中文本 */
+  transition: background-color 0.2s ease;
+}
+
+.file-table th:hover {
+  background-color: #f0f0f0;
+}
+
+.sort-indicator {
+  margin-left: 0.3rem;
+  font-size: 0.8rem;
 }
 
 /* 表体单元格 */
@@ -1625,5 +1829,51 @@ onMounted(() => {
   .content-area {
     padding: 0; /* 清除内边距（由子组件控制） */
   }
+}
+
+/* ========== 加载更多控件样式 ========== */
+
+.load-more-trigger {
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+}
+
+.loading-indicator,
+.end-indicator,
+.error-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.loading-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.btn-retry {
+  padding: 0.4rem 1rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.3s ease;
+}
+
+.btn-retry:hover {
+  background: #5568d3;
+  transform: translateY(-1px);
 }
 </style>
