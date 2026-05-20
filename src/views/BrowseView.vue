@@ -354,7 +354,15 @@ const loadDirectory = async () => {
  * 加载更多
  */
 const handleLoadMore = async () => {
-  if (isLoading.value || !hasMore.value) {
+  // 检查加载状态
+  if (isLoading.value) {
+    logger.info('正在加载中，跳过重复请求')
+    return
+  }
+  
+  // 检查是否还有更多数据
+  if (!hasMore.value) {
+    logger.info('没有更多数据可加载', { isEnd: browseState.isEnd })
     return
   }
   
@@ -364,8 +372,13 @@ const handleLoadMore = async () => {
     const result = await loadMoreFiles(maxPageSize)
     
     if (!result.success) {
-      loadError.value = result.message || '加载失败'
-      logger.error('加载更多失败:', result.message)
+      // 只有在非正常状态下才显示错误
+      if (result.message !== '没有更多数据' && result.message !== '正在加载中...') {
+        loadError.value = result.message || '加载失败'
+        logger.error('加载更多失败:', result.message)
+      } else {
+        logger.info('加载更多状态:', result.message)
+      }
     }
   } catch (error) {
     logger.error('加载更多异常:', error)

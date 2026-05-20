@@ -5,6 +5,7 @@
 
 import { BASE_API_URL } from '@/config/api'
 import { createLogger } from './logger'
+import { getToken } from './auth'
 
 const logger = createLogger('DirectoryAPI')
 
@@ -277,11 +278,12 @@ export async function browseDirectory(params) {
   })
 
   try {
+    const token = getToken()
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': token ? `Bearer ${token}` : ''
       }
     })
 
@@ -321,11 +323,19 @@ export async function loadMoreFiles(maxPageSize = 50) {
   const state = browseState.getState()
   
   // 检查是否可以加载更多
-  if (state.isLoading || !state.hasMore) {
-    logger.warn('无法加载更多:', { isLoading: state.isLoading, hasMore: state.hasMore })
+  if (state.isLoading) {
+    logger.info('跳过重复加载请求: 正在加载中', { isLoading: state.isLoading })
     return {
       success: false,
-      message: state.isLoading ? '正在加载中...' : '没有更多数据'
+      message: '正在加载中...'
+    }
+  }
+  
+  if (!state.hasMore) {
+    logger.info('没有更多数据可加载', { isEnd: state.isEnd, hasMore: state.hasMore })
+    return {
+      success: false,
+      message: '没有更多数据'
     }
   }
 

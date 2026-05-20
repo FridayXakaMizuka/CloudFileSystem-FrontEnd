@@ -398,3 +398,15 @@ curl -X POST http://localhost:8835/api/profile/get_all \
 **文档版本**: v1.0  
 **更新日期**: 2026-05-20  
 **联系人**: 后端开发团队
+
+请根据以上信息实现/files/browse的功能，功能需要单独放到一个js文件中（utils/directory.js），并在BrowseView中添加相关调用。
+注：
+1.游标分页法maxPageSize值为：
+（1）当前页面中每行显示的文件数*3+因可视宽度调整造成的最后一行的空缺数（平铺视图）；
+（2）固定为10（列表视图）。
+2.currentNodeId：作为一个变量存储，刷新浏览器页面时清空，为空则设置为POST /profile/get_all接口响应的"homeDirectoryId"；需要在/profile/get_all接口成功获得响应后在浏览器设置该变量以供浏览或回收站页面调用；
+3.`excludeNewFileIds`和`excludeNewFolderIds`：与”新建文件夹“和”上传文件“有关，请在实现该接口时添加TODO注释以在将来”上传文件“和”新建文件夹“功能实现时提醒其需要往对应的array中添加一个新ID排除项（刷新浏览器会清空）；
+4.`sortedBy`和`order`：没有时默认分别为”0（name）“和”0（升序）“，点击对应列后先清空`excludeNewFileIds`和`excludeNewFolderIds`，再判断是否已经为对应的`sortedBy`，如果是反转`order`；否则将`sortedBy`置于对应值，`order`置为默认；
+5.`lastChildrenNode`和`lastChildrenType`：用于传递给后端的游标锚点信息，只需要读取当前页面最后一项目录内容的对应信息即可，默认均为空表示目录未加载；
+6.请使用列表维护当前目录中文件信息，切换视图后已加载的目录信息需要无缝衔接，每次重新加载BrowseView时（不论刷新浏览器还是从其他页面切回）需要刷新该列表，并检查`excludeNewFileIds`、`excludeNewFolderIds`、`sortedBy`、`order`、`lastChildrenNode`和`lastChildrenType`是否重置为默认值；
+7.后端返回的响应会有"isEnd"信息，如果已为true则不要再发送请求。
