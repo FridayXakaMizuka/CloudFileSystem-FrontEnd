@@ -532,7 +532,9 @@ const handleVerify = async () => {
         saveAuthInfo(result.token, {
           userId: userInfo.value.userId,
           userType: result.userType,
-          homeDirectory: result.homeDirectory
+          homeDirectory: result.homeDirectory,
+          homeDirectoryId: result.homeDirectoryId,  // ✅ 新增：用户根目录ID
+          recycleBinId: result.recycleBinId         // ✅ 新增：用户回收站ID
         })
         
         // 清除 Cookie 中的 RSA 密钥和 sessionId

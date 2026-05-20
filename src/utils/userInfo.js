@@ -65,6 +65,8 @@ export const fetchAllUserInfo = async () => {
         email: data.email || '',
         phone: data.phone || '',
         securityQuestion: data.securityQuestion || '',  // ✅ 密保问题（驼峰命名）
+        homeDirectoryId: data.homeDirectoryId || null,  // ✅ 新增：用户根目录ID
+        recycleBinId: data.recycleBinId || null,        // ✅ 新增：用户回收站ID
         storageUsed: data.storage_used !== undefined 
           ? `${(parseFloat(data.storage_used) / (1024 * 1024 * 1024)).toFixed(2)} GB`
           : '0 GB',
@@ -179,6 +181,34 @@ export const updateUserInfoField = (field, value) => {
   } catch (error) {
     logger.error('更新用户信息字段失败:', error)
   }
+}
+
+/**
+ * 获取用户根目录ID
+ * @returns {number|null} 根目录ID或null
+ */
+export const getHomeDirectoryId = () => {
+  const cached = getCachedUserInfo()
+  if (cached && cached.homeDirectoryId) {
+    logger.debug('获取到用户根目录ID:', cached.homeDirectoryId)
+    return cached.homeDirectoryId
+  }
+  logger.warn('未找到用户根目录ID')
+  return null
+}
+
+/**
+ * 获取用户回收站ID
+ * @returns {number|null} 回收站ID或null
+ */
+export const getRecycleBinId = () => {
+  const cached = getCachedUserInfo()
+  if (cached && cached.recycleBinId) {
+    logger.debug('获取到用户回收站ID:', cached.recycleBinId)
+    return cached.recycleBinId
+  }
+  logger.warn('未找到用户回收站ID')
+  return null
 }
 
 // ==================== 头像相关功能 ====================

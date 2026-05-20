@@ -212,7 +212,9 @@ const handleLogin = async () => {
         userId: result.userId,
         nickname: result.nickname,
         userType: result.userType,
-        homeDirectory: result.homeDirectory
+        homeDirectory: result.homeDirectory,
+        homeDirectoryId: result.homeDirectoryId,  // ✅ 新增：用户根目录ID
+        recycleBinId: result.recycleBinId         // ✅ 新增：用户回收站ID
       }
       
       saveAuthInfo(result.token, userInfo)
