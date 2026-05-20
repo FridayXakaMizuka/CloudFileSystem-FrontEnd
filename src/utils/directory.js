@@ -3,7 +3,7 @@
  * 提供浏览目录、游标分页、排序等功能
  */
 
-import { API_BASE_URL } from '@/config/api'
+import { BASE_API_URL } from '@/config/api'
 import { createLogger } from './logger'
 
 const logger = createLogger('DirectoryAPI')
@@ -260,7 +260,7 @@ export async function browseDirectory(params) {
     })
   }
 
-  const url = `${API_BASE_URL}/files/browse?${queryParams.toString()}`
+  const url = `${BASE_API_URL}/files/browse?${queryParams.toString()}`
   
   logger.info('请求浏览目录:', {
     url,
