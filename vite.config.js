@@ -80,8 +80,8 @@ export default defineConfig({
     open: true,
     // HTTP 服务器配置
     proxy: {
-      // 代理所有 /auth、/file、/profile 等 API 请求到后端
-      '^/(auth|file|profile|user|transfer)/': {
+      // 代理所有 /auth、/file、/files、/profile 等 API 请求到后端
+      '^/(auth|file|files|profile|user|transfer)/': {
         target: 'http://localhost:8835',
         changeOrigin: true,
         secure: false, // 允许混合内容（HTTPS前端访问HTTP后端）
