@@ -11,6 +11,7 @@
 import { addAllRequestHeaders } from './requestHeaders'
 import { createLogger } from './logger'
 import { clearAuthInfo } from './auth'
+import { clearCurrentNodeId } from './directory'
 
 const logger = createLogger('FetchInterceptor')
 
@@ -55,7 +56,10 @@ window.fetch = async function(url, options = {}) {
       logger.debug('📤 请求:', {
         method: secureOptions.method || 'GET',
         url: typeof url === 'string' ? url : url.url,
-        headers: Object.fromEntries(secureOptions.headers.entries())
+        headers: Object.fromEntries(secureOptions.headers.entries()),
+        hasBody: !!secureOptions.body,
+        bodyLength: secureOptions.body ? secureOptions.body.length : 0,
+        bodyPreview: secureOptions.body ? secureOptions.body.substring(0, 200) : '无'
       })
     } else {
       // 生产环境也记录关键信息
@@ -67,7 +71,14 @@ window.fetch = async function(url, options = {}) {
     }
 
     // 4. 发送请求
+    logger.debug('🚀 即将调用 originalFetch，URL:', typeof url === 'string' ? url : url.url)
+    logger.debug('🚀 secureOptions.method:', secureOptions.method)
+    logger.debug('🚀 secureOptions.body 类型:', typeof secureOptions.body)
+    logger.debug('🚀 secureOptions.body 长度:', secureOptions.body ? secureOptions.body.length : 0)
+    
     const response = await originalFetch.call(this, url, secureOptions)
+    
+    logger.debug('✅ originalFetch 返回，响应状态:', response.status)
 
     // 5. 记录响应日志（开发环境）
     if (import.meta.env.DEV) {
@@ -108,6 +119,9 @@ window.fetch = async function(url, options = {}) {
         
         // 清除认证信息
         clearAuthInfo()
+        
+        // ✅ 清除 currentNodeId（会话级变量）
+        clearCurrentNodeId()
         
         // 跳转到登录页面
         window.location.href = '/login'

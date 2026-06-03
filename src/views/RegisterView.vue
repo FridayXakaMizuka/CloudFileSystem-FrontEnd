@@ -622,6 +622,8 @@ const handleRegister = async () => {
     }
 
     logger.info('发送注册请求:', registerData)
+    logger.info('注册请求体JSON字符串:', JSON.stringify(registerData))
+    logger.info('请求体长度:', JSON.stringify(registerData).length)
 
     // 发送POST请求到后端
     const response = await fetch(AUTH_API.REGISTER, {

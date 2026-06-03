@@ -86,6 +86,25 @@ export default defineConfig({
         changeOrigin: true,
         secure: false, // 允许混合内容（HTTPS前端访问HTTP后端）
         ws: true, // 支持 WebSocket
+        // ✅ 添加代理事件监听，调试请求体丢失问题
+        onProxyReq: (proxyReq, req, res) => {
+          console.log('[Proxy] 📤 代理请求:', req.method, req.url)
+          console.log('[Proxy] 请求头 Content-Type:', req.headers['content-type'])
+          console.log('[Proxy] 请求头 Content-Length:', req.headers['content-length'])
+          
+          // 如果有请求体，记录长度
+          if (req.body || req.readableLength > 0) {
+            console.log('[Proxy] ✅ 请求体存在')
+          } else {
+            console.warn('[Proxy] ❌ 请求体可能为空')
+          }
+        },
+        onProxyRes: (proxyRes, req, res) => {
+          console.log('[Proxy] 📥 代理响应:', proxyRes.statusCode, req.url)
+        },
+        onError: (err, req, res) => {
+          console.error('[Proxy Error] ❌', err.message, req.url)
+        }
       }
     }
   }

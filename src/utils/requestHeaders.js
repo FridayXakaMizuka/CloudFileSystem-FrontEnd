@@ -6,6 +6,7 @@
 import { createLogger } from './logger'
 import { getClientInfoSync, getClientIdentifier, ClientType } from './clientDetector'
 import { getDeviceFingerprint } from './deviceFingerprint'
+import axios from 'axios'
 
 const logger = createLogger('RequestHeaders')
 
@@ -35,78 +36,70 @@ const getPublicIP = async () => {
     
     // 尝试多个 IP 获取 API
     const ipApis = [
-      'https://ifconfig.me/ip',
-      'https://api.ipify.org?format=json',
-      'https://icanhazip.com'
+      { url: 'https://ifconfig.me/ip', type: 'text' },
+      { url: 'https://api.ipify.org?format=json', type: 'json' },
+      { url: 'https://icanhazip.com', type: 'text' }
     ]
     
     let publicIP = null
     
+    // 使用 Promise.race 实现超时控制，确保单个请求不会卡住
     for (const api of ipApis) {
       try {
-        logger.debug(`尝试从 ${api} 获取 IP...`)
+        logger.debug(`尝试从 ${api.url} 获取 IP...`)
         
-        // 使用 AbortController 实现超时控制
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 5000)
-        
-        const response = await fetch(api, {
-          method: 'GET',
-          signal: controller.signal,
+        // 创建 Axios 实例，配置超时
+        const axiosInstance = axios.create({
+          timeout: 3000, // 3秒超时
           headers: {
-            'Accept': 'text/plain,application/json'
+            'Accept': api.type === 'json' ? 'application/json' : 'text/plain'
           }
         })
         
-        clearTimeout(timeoutId)
+        // 发起请求
+        const response = await axiosInstance.get(api.url)
         
-        if (response.ok) {
-          const text = await response.text()
-          
-          // 不同 API 返回格式不同
-          if (api.includes('ipify')) {
-            // {"ip":"203.0.113.45"}
-            try {
-              const data = JSON.parse(text)
-              publicIP = data.ip
-            } catch (e) {
-              logger.warn(`解析 ${api} 响应失败:`, e.message)
-              continue
-            }
-          } else {
-            // 纯文本 IP 地址
-            publicIP = text.trim()
-          }
-          
-          if (publicIP && isValidIP(publicIP)) {
-            logger.info(`成功获取 IP: ${publicIP} (来自 ${api})`)
-            
-            // 更新缓存
-            ipCache = {
-              ip: publicIP,
-              timestamp: now,
-            }
-            
-            break
-          } else {
-            logger.warn(`获取的 IP 无效: ${publicIP}`)
-            publicIP = null
+        let extractedIP = null
+        
+        if (api.type === 'json') {
+          // JSON 格式响应
+          if (response.data && response.data.ip) {
+            extractedIP = response.data.ip
           }
         } else {
-          logger.warn(`${api} 返回错误状态: ${response.status}`)
+          // 纯文本响应
+          extractedIP = response.data.trim()
+        }
+        
+        if (extractedIP && isValidIP(extractedIP)) {
+          publicIP = extractedIP
+          logger.info(`成功获取 IP: ${publicIP} (来自 ${api.url})`)
+          
+          // 更新缓存
+          ipCache = {
+            ip: publicIP,
+            timestamp: now,
+          }
+          
+          break
+        } else {
+          logger.warn(`获取的 IP 无效: ${extractedIP}`)
         }
       } catch (error) {
-        if (error.name === 'AbortError') {
-          logger.warn(`${api} 请求超时（5秒）`)
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          logger.warn(`${api.url} 请求超时（3秒）`)
+        } else if (error.code === 'ERR_NETWORK') {
+          logger.warn(`${api.url} 网络错误:`, error.message)
         } else {
-          logger.warn(`从 ${api} 获取 IP 失败:`, error.message)
+          logger.warn(`从 ${api.url} 获取 IP 失败:`, error.message)
         }
+        // 继续尝试下一个 API
         continue
       }
     }
     
     if (!publicIP) {
-      logger.warn('所有 IP API 都失败')
+      logger.warn('所有 IP API 都失败，返回空字符串')
       return ''
     }
     
@@ -209,20 +202,20 @@ export const addDeviceInfoToHeaders = (headers) => {
  * @returns {Promise<Headers>} - 添加了 IP 信息的请求头
  */
 export const addIPInfoToHeaders = async (headers) => {
-  try {
-    const publicIP = await getPublicIP()
-    
-    // 只有当 IP 有效时才设置请求头
+  // 不阻塞主流程，在后台异步获取 IP
+  // 使用 .then() 而不是 await，确保立即返回
+  getPublicIP().then(publicIP => {
     if (publicIP && isValidIP(publicIP)) {
       headers.set('X-Client-IP', publicIP)
       logger.debug('已添加 X-Client-IP 请求头:', publicIP)
     } else {
-      logger.debug('IP 无效，跳过添加 X-Client-IP 请求头')
+      logger.debug('IP 无效或获取失败，跳过添加 X-Client-IP 请求头')
     }
-  } catch (error) {
+  }).catch(error => {
     logger.warn('添加 IP 信息失败:', error)
-  }
+  })
   
+  // 立即返回，不等待 IP 获取完成
   return headers
 }
 

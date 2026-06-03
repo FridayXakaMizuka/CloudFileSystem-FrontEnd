@@ -410,3 +410,5 @@ curl -X POST http://localhost:8835/api/profile/get_all \
 5.`lastChildrenNode`和`lastChildrenType`：用于传递给后端的游标锚点信息，只需要读取当前页面最后一项目录内容的对应信息即可，默认均为空表示目录未加载；
 6.请使用列表维护当前目录中文件信息，切换视图后已加载的目录信息需要无缝衔接，每次重新加载BrowseView时（不论刷新浏览器还是从其他页面切回）需要刷新该列表，并检查`excludeNewFileIds`、`excludeNewFolderIds`、`sortedBy`、`order`、`lastChildrenNode`和`lastChildrenType`是否重置为默认值；
 7.后端返回的响应会有"isEnd"信息，如果已为true则不要再发送请求。
+
+请根据该内容实现创建文件夹的逻辑：用户点击“新建文件夹”时在文件浏览界面第一个文件（夹）的位置创建一个文件夹的图标，并显示文件夹的输入框（自动将焦点移入），用户在该输入框中输入文件夹的名字后，输入框失焦时

@@ -59,7 +59,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchRSAKey, encryptPassword } from '@/utils/rsa'
-import { saveAuthInfo, isLoggedIn as checkIsLoggedIn } from '@/utils/auth'
+import { saveAuthInfo, isLoggedIn as checkIsLoggedIn, resetUserInfo } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
 import { deleteCookie } from '@/utils/cookie'
 import { AUTH_API } from '@/config/api'
@@ -67,6 +67,7 @@ import { fetchAllUserInfo } from '@/utils/userInfo'
 import { showSuccess, showError } from '@/utils/toast'
 import { clearSessionId } from '@/utils/sessionId'
 import { addAllRequestHeaders } from '@/utils/requestHeaders'
+import { setCurrentNodeId } from '@/utils/directory'
 
 const logger = createLogger('LoginView')
 
@@ -217,7 +218,9 @@ const handleLogin = async () => {
         recycleBinId: result.recycleBinId         // ✅ 新增：用户回收站ID
       }
       
-      saveAuthInfo(result.token, userInfo)
+      // 使用 resetUserInfo 确保旧用户信息被清除，新用户信息被正确设置
+      resetUserInfo(userInfo)
+      saveAuthInfo(result.token, null)  // 只保存 token，不重复保存用户信息
       
       // 清除 Cookie 中的 RSA 密钥和 sessionId（登录成功后不再需要）
       deleteCookie('rsaPublicKey')
@@ -230,6 +233,12 @@ const handleLogin = async () => {
       
       if (allUserInfo) {
         logger.info('用户信息获取成功:', allUserInfo.nickname)
+        
+        // ✅ 设置 currentNodeId 为 homeDirectoryId
+        if (allUserInfo.homeDirectoryId) {
+          setCurrentNodeId(allUserInfo.homeDirectoryId)
+          logger.info('已设置 currentNodeId:', allUserInfo.homeDirectoryId)
+        }
       } else {
         logger.warn('用户信息获取失败，但不影响登录')
       }

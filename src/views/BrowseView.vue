@@ -91,14 +91,30 @@
 
     <!-- 文件列表区域 -->
     <div class="file-list">
-      <!-- 空状态提示：当没有文件时显示 -->
-      <div v-if="files.length === 0" class="empty-state">
+      <!-- 空状态提示：当没有文件且不在创建文件夹时显示 -->
+      <div v-if="files.length === 0 && !isCreatingFolder" class="empty-state">
         <div class="empty-icon">📂</div>
         <p>暂无文件</p>
       </div>
 
-      <!-- 网格视图：当有文件且选择网格模式时显示 -->
+      <!-- 网格视图：当选择网格模式时显示（包括正在创建文件夹的情况） -->
       <div v-else-if="viewMode === 'grid'" class="file-grid">
+        <!-- 新建文件夹输入框（在第一个位置） -->
+        <div v-if="isCreatingFolder" class="file-item creating-folder-item">
+          <div class="file-icon">📁</div>
+          <div class="file-info">
+            <input 
+              ref="newFolderInputRef"
+              v-model="newFolderName"
+              type="text"
+              class="folder-name-input"
+              @blur="confirmCreateFolder"
+              @keyup.enter="confirmCreateFolder"
+              @keyup.esc="cancelCreateFolder"
+            />
+          </div>
+        </div>
+        
         <!-- 遍历渲染每个文件项 -->
         <div
             v-for="file in files"
@@ -113,7 +129,7 @@
           <!-- 文件信息：名称和元数据 -->
           <div class="file-info">
             <p class="file-name">{{ file.name }}</p>
-            <p class="file-meta">{{ formatFileSize(file.size) }} · {{ file.date }}</p>
+            <p class="file-meta">{{ file.type === 'folder' ? '--' : formatFileSize(file.size) }} · {{ formatDateTime(file.updatedAt) }}</p>
           </div>
           <!-- 文件操作按钮：下载和删除（悬停时显示） -->
           <div class="file-actions">
@@ -127,7 +143,7 @@
         </div>
       </div>
 
-      <!-- 列表视图：当有文件且选择列表模式时显示 -->
+      <!-- 列表视图：当选择列表模式时显示（包括正在创建文件夹的情况） -->
       <div v-else class="table-wrapper">
         <table class="file-table">
           <thead>
@@ -153,6 +169,24 @@
             </tr>
           </thead>
           <tbody>
+            <!-- 新建文件夹输入框（在第一个位置） -->
+            <tr v-if="isCreatingFolder" class="file-row creating-folder-row">
+              <td class="col-icon">
+                <div class="file-icon">📁</div>
+              </td>
+              <td class="col-name" colspan="5">
+                <input 
+                  ref="newFolderInputRef"
+                  v-model="newFolderName"
+                  type="text"
+                  class="folder-name-input table-input"
+                  @blur="confirmCreateFolder"
+                  @keyup.enter="confirmCreateFolder"
+                  @keyup.esc="cancelCreateFolder"
+                />
+              </td>
+            </tr>
+            
             <tr
               v-for="file in files"
               :key="file.id"
@@ -176,17 +210,17 @@
               
               <!-- 文件大小列 -->
               <td class="col-size">
-                <span class="size-text">{{ formatFileSize(file.size) }}</span>
+                <span class="size-text">{{ file.type === 'folder' ? '--' : formatFileSize(file.size) }}</span>
               </td>
               
               <!-- 创建时间列 -->
               <td class="col-created">
-                <span class="time-text">{{ file.createdDate }}</span>
+                <span class="time-text">{{ formatDateTime(file.createdAt) }}</span>
               </td>
               
               <!-- 修改时间列 -->
               <td class="col-date">
-                <span class="time-text">{{ file.date }}</span>
+                <span class="time-text">{{ formatDateTime(file.updatedAt) }}</span>
               </td>
               
               <!-- 操作列 -->
@@ -235,7 +269,7 @@
 
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { createLogger } from '@/utils/logger'
 import { getCachedUserInfo } from '@/utils/userInfo'
 import { 
@@ -244,7 +278,10 @@ import {
   setCurrentNodeId,
   initBrowse,
   loadMoreFiles,
-  calculateMaxPageSize
+  calculateMaxPageSize,
+  createFolder,
+  generateSmartFolderName,
+  formatDateTime
 } from '@/utils/directory'
 
 const logger = createLogger('BrowseView')
@@ -274,6 +311,11 @@ const storageTotal = ref('10 GB')
 //  Intersection Observer for infinite scroll
 let observer = null
 const loadMoreTrigger = ref(null)
+
+// 新建文件夹相关状态
+const isCreatingFolder = ref(false) // 是否正在创建文件夹
+const newFolderName = ref('') // 新文件夹名称
+const newFolderInputRef = ref(null) // 输入框引用
 
 /**
  * 计算属性：存储空间使用百分比
@@ -488,7 +530,7 @@ const handleSearch = () => {
  * @returns {string} 格式化后的文件大小字符串
  */
 const formatFileSize = (bytes) => {
-  if (bytes === 0) return '--'
+  if (bytes === 0 || bytes === null || bytes === undefined) return '--'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -508,21 +550,98 @@ const handleUpload = () => {
 /**
  * 处理新建文件夹操作
  */
-const handleNewFolder = () => {
-  const name = prompt('请输入文件夹名称：')
-  if (name) {
-    // TODO: 调用后端API创建文件夹，获取返回的folderId
-    // TODO: 调用 browseState.addExcludeFolderId(folderId) 将新文件夹ID添加到排除列表
-    
-    // 临时在列表开头插入新文件夹（待API实现后移除）
-    files.value.unshift({
-      id: Date.now(),
-      name: name,
-      type: 'folder',
-      size: 0,
-      date: new Date().toISOString().split('T')[0]
-    })
+const handleNewFolder = async () => {
+  // 如果已经在创建中，不重复触发
+  if (isCreatingFolder.value) {
+    logger.info('已在创建文件夹状态')
+    return
   }
+  
+  // 设置创建状态
+  isCreatingFolder.value = true
+  newFolderName.value = '新建文件夹'
+  
+  // 等待 DOM 更新后聚焦输入框
+  await nextTick()
+  if (newFolderInputRef.value) {
+    newFolderInputRef.value.focus()
+    newFolderInputRef.value.select()
+  }
+}
+
+/**
+ * 确认创建文件夹（失焦或按回车时调用）
+ */
+const confirmCreateFolder = async () => {
+  // 如果没有名称或正在创建中，取消
+  if (!newFolderName.value.trim()) {
+    cancelCreateFolder()
+    return
+  }
+  
+  try {
+    const parentId = getCurrentNodeId()
+    if (!parentId) {
+      logger.error('无法获取当前目录ID')
+      alert('无法获取目录信息，请刷新页面')
+      cancelCreateFolder()
+      return
+    }
+    
+    // ✅ 智能生成文件夹名称：检查同名并自动添加序号
+    const smartFolderName = generateSmartFolderName(newFolderName.value.trim(), files.value)
+    
+    logger.info('开始创建文件夹:', { parentId, folderName: smartFolderName })
+    
+    // 调用 API 创建文件夹
+    const result = await createFolder(parentId, smartFolderName)
+    
+    if (result.success) {
+      const folderData = result.data
+      logger.info('文件夹创建成功:', folderData)
+      
+      // 将新文件夹 ID 添加到排除列表
+      browseState.addExcludeFolderId(folderData.id)
+      
+      // 在文件列表开头插入新文件夹
+      const newFolder = {
+        id: folderData.id,
+        name: folderData.name,
+        type: 'folder',
+        size: 0,
+        createdAt: folderData.createdAt || new Date().toISOString(),
+        updatedAt: folderData.updatedAt || new Date().toISOString(),
+        hasChildren: false,
+        childCount: 0
+      }
+      
+      // 插入到列表开头
+      files.value.unshift(newFolder)
+      
+      // 重置创建状态
+      isCreatingFolder.value = false
+      newFolderName.value = ''
+      
+      logger.info('新文件夹已添加到列表:', newFolder)
+    } else {
+      logger.error('创建文件夹失败:', result.message)
+      alert(`创建文件夹失败：${result.message}`)
+      cancelCreateFolder()
+    }
+  } catch (error) {
+    logger.error('创建文件夹异常:', error)
+    alert('网络错误，请稍后重试')
+    cancelCreateFolder()
+  }
+}
+
+/**
+ * 取消创建文件夹
+ */
+const cancelCreateFolder = () => {
+  isCreatingFolder.value = false
+  newFolderName.value = ''
+  logger.info('取消创建文件夹')
 }
 
 /**
@@ -999,6 +1118,63 @@ onUnmounted(() => {
 .action-btn:hover {
   background: #f5f7fa; /* 浅灰色背景 */
   border-color: #667eea; /* 边框变为紫色 */
+}
+
+/* ========== 新建文件夹输入框样式 ========== */
+
+/* 正在创建的文件夹项 */
+.creating-folder-item {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.2);
+  }
+}
+
+/* 文件夹名称输入框 */
+.folder-name-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  outline: none;
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.folder-name-input:focus {
+  border-color: #764ba2;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* 表格中的输入框 */
+.folder-name-input.table-input {
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.creating-folder-row {
+  background: #f8f9ff;
+  animation: highlight-row 1s ease-in-out;
+}
+
+@keyframes highlight-row {
+  0% {
+    background: #e8ebff;
+  }
+  100% {
+    background: #f8f9ff;
+  }
 }
 
 /* 视图切换开关 */

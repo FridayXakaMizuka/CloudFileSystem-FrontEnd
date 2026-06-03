@@ -114,9 +114,10 @@ import { useRouter, onBeforeRouteUpdate } from 'vue-router'
 import BrowseView from './BrowseView.vue'
 import TransferView from './TransferView.vue'
 import RecycleBinView from './RecycleBinView.vue'
-import { getUserInfo, clearAuthInfo, getToken } from '@/utils/auth'
+import { getUserInfo, clearAuthInfo, getToken, resetUserInfo } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
 import { getFullAvatarUrl, loadAuthenticatedImage, clearUserInfoCache, getCachedUserInfo } from '@/utils/userInfo'
+import { clearCurrentNodeId } from '@/utils/directory'
 
 const logger = createLogger('DashboardView')
 
@@ -294,7 +295,9 @@ const handleImageError = () => {
 const handleLogout = () => {
   if (confirm('确定要退出登录吗？')) {
     clearAuthInfo()
+    resetUserInfo(null)  // 重置用户信息，确保完全清除
     clearUserInfoCache()  // 清除用户信息缓存（包括头像）
+    clearCurrentNodeId()  // ✅ 清除 currentNodeId（会话级变量）
     router.push('/login')
   }
 }

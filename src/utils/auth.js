@@ -61,6 +61,23 @@ export const clearAuthInfo = () => {
 }
 
 /**
+ * 重置用户信息（在用户切换或重新登录时调用）
+ * @param {Object} newUserInfo - 新的用户信息对象
+ */
+export const resetUserInfo = (newUserInfo) => {
+  // 先清除旧的用户信息
+  localStorage.removeItem(USER_INFO_KEY)
+  
+  // 保存新的用户信息
+  if (newUserInfo) {
+    localStorage.setItem(USER_INFO_KEY, JSON.stringify(newUserInfo))
+    logger.info('用户信息已重置并保存')
+  } else {
+    logger.warn('未提供新用户信息，仅清除了旧信息')
+  }
+}
+
+/**
  * 创建包含认证头的请求配置
  * @param {Object} config - 原始请求配置
  * @returns {Object} 包含 Authorization 头的配置

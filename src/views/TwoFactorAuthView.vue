@@ -228,10 +228,11 @@ import { fetchRSAKey } from '@/utils/rsa'
 import { getSessionId, createNewSessionId, clearSessionId } from '@/utils/sessionId'
 import { getCookie, setCookie, deleteCookie } from '@/utils/cookie'
 import { encryptPassword } from '@/utils/rsa'
-import { saveAuthInfo } from '@/utils/auth'
+import { saveAuthInfo, resetUserInfo } from '@/utils/auth'
 import { fetchAllUserInfo } from '@/utils/userInfo'
 import { addAllRequestHeaders } from '@/utils/requestHeaders'
 import { showSuccess, showError } from '@/utils/toast'
+import { setCurrentNodeId } from '@/utils/directory'
 
 const logger = createLogger('TwoFactorAuth')
 const router = useRouter()
@@ -529,13 +530,18 @@ const handleVerify = async () => {
       
       // 保存 JWT 令牌和用户信息
       if (result.token) {
-        saveAuthInfo(result.token, {
+        // 构建用户信息对象
+        const userInfoData = {
           userId: userInfo.value.userId,
           userType: result.userType,
           homeDirectory: result.homeDirectory,
           homeDirectoryId: result.homeDirectoryId,  // ✅ 新增：用户根目录ID
           recycleBinId: result.recycleBinId         // ✅ 新增：用户回收站ID
-        })
+        }
+        
+        // 使用 resetUserInfo 确保旧用户信息被清除，新用户信息被正确设置
+        resetUserInfo(userInfoData)
+        saveAuthInfo(result.token, null)  // 只保存 token，不重复保存用户信息
         
         // 清除 Cookie 中的 RSA 密钥和 sessionId
         deleteCookie('rsaPublicKey')
@@ -547,6 +553,12 @@ const handleVerify = async () => {
         
         if (allUserInfo) {
           logger.info('用户信息获取成功')
+          
+          // ✅ 设置 currentNodeId 为 homeDirectoryId
+          if (allUserInfo.homeDirectoryId) {
+            setCurrentNodeId(allUserInfo.homeDirectoryId)
+            logger.info('已设置 currentNodeId:', allUserInfo.homeDirectoryId)
+          }
         }
         
         // 跳转到首页

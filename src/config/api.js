@@ -83,16 +83,16 @@ export const USER_API = {
 // 文件相关接口
 export const FILE_API = {
   // 浏览文件
-  BROWSE: `${BASE_API_URL}/file/browse`,
+  BROWSE: `${BASE_API_URL}/files/browse`,
   
   // 下载文件
-  DOWNLOAD: `${BASE_API_URL}/file/download`,
+  DOWNLOAD: `${BASE_API_URL}/files/download`,
   
   // 删除文件
-  DELETE: `${BASE_API_URL}/file/delete`,
+  DELETE: `${BASE_API_URL}/files/delete`,
   
   // 创建文件夹
-  CREATE_FOLDER: `${BASE_API_URL}/file/folder`,
+  CREATE_FOLDER: `${BASE_API_URL}/files/folder`,
   
   // 上传相关接口
   UPLOAD: {
