@@ -199,30 +199,29 @@ export const addDeviceInfoToHeaders = (headers) => {
 /**
  * 添加 IP 信息到请求头
  * @param {Headers} headers - 现有的请求头
- * @returns {Promise<Headers>} - 添加了 IP 信息的请求头
+ * @returns {Promise<Headers>} - 添加了 IP 信息的请求头（阻塞等待）
  */
 export const addIPInfoToHeaders = async (headers) => {
-  // 不阻塞主流程，在后台异步获取 IP
-  // 使用 .then() 而不是 await，确保立即返回
-  getPublicIP().then(publicIP => {
+  try {
+    const publicIP = await getPublicIP()
+    
     if (publicIP && isValidIP(publicIP)) {
       headers.set('X-Client-IP', publicIP)
       logger.debug('已添加 X-Client-IP 请求头:', publicIP)
     } else {
       logger.debug('IP 无效或获取失败，跳过添加 X-Client-IP 请求头')
     }
-  }).catch(error => {
+  } catch (error) {
     logger.warn('添加 IP 信息失败:', error)
-  })
+  }
   
-  // 立即返回，不等待 IP 获取完成
   return headers
 }
 
 /**
  * 添加设备指纹到请求头
  * @param {Headers} headers - 现有的请求头
- * @returns {Promise<Headers>} - 添加了设备指纹的请求头
+ * @returns {Promise<Headers>} - 添加了设备指纹的请求头（阻塞等待）
  */
 export const addDeviceFingerprintToHeaders = async (headers) => {
   try {
@@ -242,17 +241,35 @@ export const addDeviceFingerprintToHeaders = async (headers) => {
 /**
  * 添加所有请求头（设备信息 + IP 信息 + 设备指纹）
  * @param {Headers} headers - 现有的请求头
- * @returns {Promise<Headers>} - 添加了所有请求头的 Headers 对象
+ * @returns {Promise<Headers>} - 添加了所有请求头的 Headers 对象（阻塞等待）
  */
 export const addAllRequestHeaders = async (headers) => {
   // 添加设备信息（同步）
   headers = addDeviceInfoToHeaders(headers)
   
-  // 添加设备指纹（异步）
-  headers = await addDeviceFingerprintToHeaders(headers)
-  
-  // 添加 IP 信息（异步）
-  headers = await addIPInfoToHeaders(headers)
+  // 并行获取设备指纹和 IP 信息（减少等待时间）
+  try {
+    const [fingerprint, publicIP] = await Promise.all([
+      getDeviceFingerprint(),
+      getPublicIP()
+    ])
+    
+    // 添加设备指纹
+    if (fingerprint) {
+      headers.set('X-Device-Fingerprint', fingerprint)
+      logger.debug('已添加 X-Device-Fingerprint 请求头:', fingerprint.substring(0, 16) + '...')
+    }
+    
+    // 添加 IP 信息
+    if (publicIP && isValidIP(publicIP)) {
+      headers.set('X-Client-IP', publicIP)
+      logger.debug('已添加 X-Client-IP 请求头:', publicIP)
+    } else {
+      logger.debug('IP 无效或获取失败，跳过添加 X-Client-IP 请求头')
+    }
+  } catch (error) {
+    logger.warn('添加请求头失败:', error)
+  }
   
   return headers
 }

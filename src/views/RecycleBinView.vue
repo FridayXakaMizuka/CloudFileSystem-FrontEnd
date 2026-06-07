@@ -8,6 +8,14 @@
         <div class="header-left">
           <h2 class="title">回收站</h2>
           <p class="subtitle">已删除的文件将在30天后自动清除</p>
+          <!-- 恢复进程提示文字 -->
+          <p 
+            v-if="restoreProcesses.length > 0" 
+            class="restore-process-hint"
+            @click="showRestoreProgressModal"
+          >
+            {{ restoreProcesses.length }}个恢复任务正在进行中
+          </p>
         </div>
         <div class="header-right">
           <button class="btn btn-clear-all" @click="handleClearAll" :disabled="files.length === 0">
@@ -37,8 +45,8 @@
 
     <!-- 文件列表区域 -->
     <div class="file-list">
-      <!-- 空状态提示：当回收站为空时显示 -->
-      <div v-if="files.length === 0" class="empty-state">
+      <!-- 空状态提示：当回收站为空且未在加载时显示 -->
+      <div v-if="files.length === 0 && !isLoading && !loadError" class="empty-state">
         <div class="empty-icon">♻️</div>
         <p>回收站是空的</p>
         <p class="empty-hint">已删除的文件会出现在这里</p>
@@ -54,6 +62,7 @@
               <th class="col-size">大小</th>
               <th class="col-created">创建时间</th>
               <th class="col-deleted">删除时间</th>
+              <th class="col-expires">剩余天数</th>
               <th class="col-actions">操作</th>
             </tr>
           </thead>
@@ -76,24 +85,31 @@
                   <span class="file-name">{{ file.name }}</span>
                   <div class="file-meta-info">
                     <span class="file-type-badge">{{ getFileTypeLabel(file.type) }}</span>
-                    <span class="file-size-inline">· {{ formatFileSize(file.size) }}</span>
+                    <span class="file-size-inline">· {{ file.type === 'folder' ? '--' : formatFileSize(file.size) }}</span>
                   </div>
                 </div>
               </td>
               
               <!-- 文件大小列 -->
               <td class="col-size">
-                <span class="size-text">{{ formatFileSize(file.size) }}</span>
+                <span class="size-text">{{ file.type === 'folder' ? '--' : formatFileSize(file.size) }}</span>
               </td>
               
               <!-- 创建时间列 -->
               <td class="col-created">
-                <span class="time-text">{{ formatDate(file.createdDate) }}</span>
+                <span class="time-text">{{ formatDateTime(file.createdAt) }}</span>
               </td>
               
               <!-- 删除时间列 -->
               <td class="col-deleted">
-                <span class="time-text deleted-time">{{ formatDate(file.deletedDate) }}</span>
+                <span class="time-text deleted-time">{{ formatDateTime(file.deletedAt) }}</span>
+              </td>
+              
+              <!-- 剩余天数列 -->
+              <td class="col-expires">
+                <span class="expires-text" :class="{ 'expires-warning': file.daysRemaining <= 7 }">
+                  {{ file.daysRemaining !== undefined ? file.daysRemaining + ' 天' : '--' }}
+                </span>
               </td>
               
               <!-- 操作列 -->
@@ -121,62 +137,242 @@
           </tbody>
         </table>
       </div>
+      
+      <!-- 加载更多触发器 -->
+      <div ref="loadMoreTrigger" class="load-more-trigger">
+        <div v-if="isLoading" class="loading-indicator">
+          <span>加载中...</span>
+        </div>
+        <div v-if="!hasMore && files.length > 0" class="end-indicator">
+          <span>已经到底啦~ 🎉</span>
+        </div>
+        <div v-if="loadError" class="error-indicator">
+          <span>⚠️ {{ loadError }}</span>
+          <button @click="handleRetryLoad" class="btn-retry">重试</button>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- 恢复进程弹窗 -->
+  <Teleport to="body">
+    <Transition name="modal-fade">
+      <div v-if="showRestoreModal" class="restore-modal-overlay" @click="hideRestoreProgressModal">
+        <!-- 半透明黑色遮罩 -->
+        <div class="modal-backdrop"></div>
+        
+        <!-- 弹窗内容 -->
+        <div class="modal-content" @click.stop>
+          <!-- 标题栏 -->
+          <div class="modal-header">
+            <h3 class="modal-title">
+              {{ restoreProcesses.length }}个恢复任务正在进行中：
+            </h3>
+            <div class="loading-spinner"></div>
+          </div>
+          
+          <!-- 进程列表 -->
+          <div class="modal-body">
+            <ul class="process-list">
+              <li 
+                v-for="(process, index) in restoreProcesses" 
+                :key="index"
+                class="process-item"
+              >
+                正在恢复目录及其子目录：{{ process.nodeName || '未知目录' }}
+              </li>
+            </ul>
+          </div>
+          
+          <!-- 底部提示 -->
+          <div class="modal-footer">
+            <p class="footer-text">点击弹窗外区域返回</p>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { createLogger } from '@/utils/logger'
+import {
+  recycleBinState,
+  getRecycleBinId,
+  initRecycleBinBrowse,
+  loadMoreRecycleBinFiles,
+  formatDateTime,
+  restoreNode,
+  getRestoreProcesses,
+  permanentDelete
+} from '@/utils/directory'
+import {showError, showSuccess, showInfo} from "@/utils/toast.js";
 
 const logger = createLogger('RecycleBinView')
 
 // 搜索关键词
 const searchKeyword = ref('')
 
-// 回收站文件列表数据（模拟数据）
-const files = ref([
-  { 
-    id: 1, 
-    name: '旧项目文档', 
-    type: 'folder', 
-    size: 0, 
-    createdDate: '2024-01-10',
-    deletedDate: '2024-01-15' 
-  },
-  { 
-    id: 2, 
-    name: '报告草稿.pdf', 
-    type: 'pdf', 
-    size: 2048576, 
-    createdDate: '2024-01-08',
-    deletedDate: '2024-01-14' 
-  },
-  { 
-    id: 3, 
-    name: '会议记录.docx', 
-    type: 'word', 
-    size: 524288, 
-    createdDate: '2024-01-05',
-    deletedDate: '2024-01-13' 
-  },
-  { 
-    id: 4, 
-    name: '照片备份', 
-    type: 'folder', 
-    size: 0, 
-    createdDate: '2023-12-20',
-    deletedDate: '2024-01-12' 
-  },
-  { 
-    id: 5, 
-    name: '演示文稿.pptx', 
-    type: 'ppt', 
-    size: 5242880, 
-    createdDate: '2024-01-03',
-    deletedDate: '2024-01-11' 
-  },
-])
+// 文件列表数据（从 recycleBinState 获取）
+const files = computed(() => recycleBinState.files)
+
+// 加载状态
+const isLoading = computed(() => recycleBinState.isLoading)
+const hasMore = computed(() => recycleBinState.hasMore)
+const loadError = ref(null)
+
+// Intersection Observer for infinite scroll
+let observer = null
+const loadMoreTrigger = ref(null)
+
+// 是否已成功加载过回收站（避免重复请求）
+const hasLoaded = ref(false)
+
+// 恢复进程相关状态
+const restoreProcesses = ref([])
+const showRestoreModal = ref(false)
+const restorePollingTimer = ref(null)
+const isPolling = ref(false)
+
+/**
+ * 初始化加载回收站目录
+ */
+const loadRecycleBin = async () => {
+  try {
+    loadError.value = null
+    
+    // 检查是否有 recycleBinId
+    const recycleBinId = getRecycleBinId()
+    if (!recycleBinId) {
+      logger.error('无法获取 recycleBinId')
+      loadError.value = '无法获取回收站信息，请重新登录'
+      return
+    }
+    
+    // 调用初始化浏览
+    const result = await initRecycleBinBrowse(10)
+    
+    if (!result.success) {
+      loadError.value = result.message || '加载失败'
+      logger.error('加载回收站失败:', result.message)
+    } else {
+      logger.info('回收站加载成功', { count: files.value.length })
+      hasLoaded.value = true
+    }
+  } catch (error) {
+    logger.error('加载回收站异常:', error)
+    loadError.value = '网络错误，请稍后重试'
+  }
+}
+
+/**
+ * 加载更多
+ */
+const handleLoadMore = async () => {
+  if (isLoading.value) {
+    return
+  }
+  
+  if (!hasMore.value) {
+    return
+  }
+  
+  try {
+    loadError.value = null
+    const result = await loadMoreRecycleBinFiles(10)
+    
+    if (!result.success) {
+      if (result.message !== '没有更多数据' && result.message !== '正在加载中...') {
+        loadError.value = result.message || '加载失败'
+        logger.error('加载更多失败:', result.message)
+      }
+    }
+  } catch (error) {
+    logger.error('加载更多异常:', error)
+    loadError.value = '网络错误，请稍后重试'
+  }
+}
+
+/**
+ * 重试加载
+ */
+const handleRetryLoad = () => {
+  if (files.value.length === 0) {
+    loadRecycleBin()
+  } else {
+    handleLoadMore()
+  }
+}
+
+/**
+ * 获取恢复进程列表
+ */
+const fetchRestoreProcesses = async () => {
+  try {
+    const result = await getRestoreProcesses()
+    if (result.success) {
+      restoreProcesses.value = result.data
+      logger.info('恢复进程列表已更新:', { count: result.count })
+    } else {
+      logger.error('获取恢复进程失败:', result.message)
+    }
+  } catch (error) {
+    logger.error('获取恢复进程异常:', error)
+  }
+}
+
+/**
+ * 启动恢复进程轮询
+ */
+const startRestorePolling = () => {
+  if (isPolling.value) {
+    return
+  }
+  
+  isPolling.value = true
+  logger.info('开始轮询恢复进程')
+  
+  // 每 3 秒轮询一次
+  restorePollingTimer.value = setInterval(async () => {
+    await fetchRestoreProcesses()
+    
+    // 如果所有进程都完成了，停止轮询
+    if (restoreProcesses.value.length === 0) {
+      stopRestorePolling()
+      showInfo('所有恢复任务已完成')
+      // 关闭弹窗（如果打开）
+      showRestoreModal.value = false
+    }
+  }, 3000)
+}
+
+/**
+ * 停止恢复进程轮询
+ */
+const stopRestorePolling = () => {
+  if (restorePollingTimer.value) {
+    clearInterval(restorePollingTimer.value)
+    restorePollingTimer.value = null
+  }
+  isPolling.value = false
+  logger.info('停止轮询恢复进程')
+}
+
+/**
+ * 显示恢复进程弹窗
+ */
+const showRestoreProgressModal = async () => {
+  await fetchRestoreProcesses()
+  showRestoreModal.value = true
+}
+
+/**
+ * 隐藏恢复进程弹窗
+ */
+const hideRestoreProgressModal = () => {
+  showRestoreModal.value = false
+}
 
 /**
  * 根据文件类型获取对应的图标
@@ -224,25 +420,11 @@ const getFileTypeLabel = (type) => {
  * @returns {string} 格式化后的文件大小字符串
  */
 const formatFileSize = (bytes) => {
-  if (bytes === 0) return '--'
+  if (bytes === 0 || bytes === null || bytes === undefined) return '--'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
-}
-
-/**
- * 格式化日期
- * @param {string} dateString - 日期字符串
- * @returns {string} 格式化后的日期
- */
-const formatDate = (dateString) => {
-  if (!dateString) return '--'
-  const date = new Date(dateString)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
 }
 
 /**
@@ -255,21 +437,71 @@ const handleSearch = () => {
   }
   logger.info('执行搜索:', searchKeyword.value)
   // TODO: 实现搜索逻辑
-  alert(`搜索：${searchKeyword.value}\n（接口待实现）`)
 }
 
 /**
  * 处理还原文件操作
+ * 需要与后台同步恢复信息
+ * 恢复期间用户可以对其他文件（夹）进行操作
+ * 恢复完成后会提示用户
  * @param {Object} file - 文件对象
  */
-const handleRestore = (file) => {
-  logger.info('还原文件:', file.name)
-  // TODO: 实现还原接口
-  alert(`还原文件：${file.name}\n（接口待实现）`)
+const handleRestore = async (file) => {
+  if (!confirm(`确定要还原 "${file.name}" 吗？\n
+  如果待恢复目录中子文件夹或文件较多，可能需要花费较长时间。\n
+  您可以在此期间自由操作其他文件夹，恢复完成后将通知您。`)) {
+    return
+  }
   
-  // 临时：从列表中移除（模拟还原成功）
-  if (confirm(`确定要还原 "${file.name}" 吗？`)) {
-    files.value = files.value.filter(f => f.id !== file.id)
+  try {
+    logger.info('开始还原文件:', file.name)
+    
+    // 获取 batchId（从回收站列表项中获取）
+    const batchId = file.batchId
+    
+    // 获取 version（乐观锁版本号）
+    const version = file.version || 0
+    
+    // 发起恢复请求
+    const result = await restoreNode(batchId, version)
+    
+    if (result.success) {
+      // 根据响应码显示不同消息
+      if (result.code === 204) {
+        showInfo(result.message || '原父目录不存在或已删除，已恢复到用户根目录')
+        logger.info('恢复成功（重命名）:', result.data)
+      } else {
+        showSuccess(result.message || '已开始恢复，请稍后查看恢复进度')
+        logger.info('恢复请求成功:', result.message)
+      }
+      
+      // 显示恢复详情（如果有）
+      if (result.data) {
+        logger.info('恢复详情:', {
+          newName: result.data.newName,
+          nodeType: result.data.nodeType,
+          restoredPath: result.data.restoredPath,
+          newVersion: result.data.newVersion
+        })
+      }
+      
+      // 从列表中移除该文件（因为已经开始恢复）
+      recycleBinState.state.files = recycleBinState.state.files.filter(f => f.id !== file.id)
+      
+      // 刷新恢复进程列表
+      await fetchRestoreProcesses()
+      
+      // 如果有进程在运行，启动轮询
+      if (restoreProcesses.value.length > 0 && !isPolling.value) {
+        startRestorePolling()
+      }
+    } else {
+      showError(result.message || '恢复失败')
+      logger.error('恢复节点失败:', result.message)
+    }
+  } catch(error) {
+    showError('网络错误，请稍后重试')
+    logger.error('恢复节点异常：', error)
   }
 }
 
@@ -277,14 +509,33 @@ const handleRestore = (file) => {
  * 处理彻底删除文件操作
  * @param {Object} file - 文件对象
  */
-const handlePermanentDelete = (file) => {
-  logger.info('彻底删除文件:', file.name)
-  // TODO: 实现彻底删除接口
-  alert(`彻底删除文件：${file.name}\n（接口待实现）`)
+const handlePermanentDelete = async (file) => {
+  if (!confirm(`确定要彻底删除 "${file.name}" 吗？\n此操作不可恢复！`)) {
+    return
+  }
   
-  // 临时：从列表中移除（模拟删除成功）
-  if (confirm(`确定要彻底删除 "${file.name}" 吗？此操作不可恢复！`)) {
-    files.value = files.value.filter(f => f.id !== file.id)
+  try {
+    logger.info('彻底删除文件:', file.name)
+    
+    // 获取 batchId（从回收站列表项中获取）
+    const batchId = file.batchId
+    
+    // 调用彻底删除接口（回收站模式：mode=true）
+    const result = await permanentDelete(true, batchId, null, null)
+    
+    if (result.success) {
+      showSuccess(`"${file.name}" 已彻底删除`)
+      logger.info('彻底删除成功:', result.message)
+      
+      // 从列表中移除该文件
+      recycleBinState.state.files = recycleBinState.state.files.filter(f => f.id !== file.id)
+    } else {
+      showError(result.message || '彻底删除失败')
+      logger.error('彻底删除失败:', result.message)
+    }
+  } catch (error) {
+    showError('网络错误，请稍后重试')
+    logger.error('彻底删除异常:', error)
   }
 }
 
@@ -296,12 +547,77 @@ const handleClearAll = () => {
   // TODO: 实现清空回收站接口
   
   if (confirm(`确定要清空回收站吗？共 ${files.value.length} 个文件将被彻底删除，此操作不可恢复！`)) {
-    files.value = []
+    recycleBinState.state.files = []
+  }
+}
+
+/**
+ * 设置 Intersection Observer 用于无限滚动
+ */
+const setupIntersectionObserver = () => {
+  if (observer) {
+    observer.disconnect()
+  }
+  
+  // ✅ 获取 .file-list 容器作为观察的根元素
+  const fileListComponent = document.querySelector('.file-list')
+  
+  observer = new IntersectionObserver((entries) => {
+    logger.info('RecycleBin Intersection Observer 触发', {
+      isIntersecting: entries[0].isIntersecting,
+      isLoading: isLoading.value,
+      hasMore: hasMore.value,
+      loadError: loadError.value
+    })
+    
+    if (entries[0].isIntersecting && !isLoading.value && hasMore.value && !loadError.value) {
+      logger.info('✅ 开始加载更多回收站文件')
+      handleLoadMore()
+    } else {
+      logger.info('❌ 不满足加载条件')
+    }
+  }, {
+    root: fileListComponent, // ✅ 指定 .file-list 为观察容器
+    rootMargin: '100px'
+  })
+  
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value)
+    logger.info('✅ 已观察回收站 loadMoreTrigger 元素')
+  } else {
+    logger.warn('⚠️ loadMoreTrigger 元素不存在')
   }
 }
 
 onMounted(() => {
-  logger.info('回收站页面加载完成')
+  logger.info('回收站页面加载，开始加载回收站数据')
+  
+  // 只在尚未加载过时执行请求
+  if (!hasLoaded.value) {
+    loadRecycleBin()
+  }
+  
+  // 等待DOM更新后设置 Intersection Observer
+  setTimeout(() => {
+    setupIntersectionObserver()
+  }, 100)
+  
+  // 初始加载恢复进程列表
+  fetchRestoreProcesses()
+  
+  // 如果有进程在运行，启动轮询
+  if (restoreProcesses.value.length > 0 && !isPolling.value) {
+    startRestorePolling()
+  }
+})
+
+onUnmounted(() => {
+  if (observer) {
+    observer.disconnect()
+  }
+  
+  // 清除轮询定时器
+  stopRestorePolling()
 })
 </script>
 
@@ -1479,6 +1795,249 @@ onMounted(() => {
   /* 表体单元格内边距 */
   .file-table td {
     padding: 0.5rem 0.6rem;
+  }
+}
+
+/* ==================== 新增元素样式 ==================== */
+
+/* 剩余天数列 */
+.col-expires {
+  width: 100px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* 剩余天数文本 */
+.expires-text {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* 即将过期警告（红色） */
+.expires-warning {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+/* 加载更多触发器 */
+.load-more-trigger {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem 0;
+  min-height: 3rem;
+}
+
+/* 加载指示器 */
+.loading-indicator {
+  color: #667eea;
+  font-size: 0.9rem;
+}
+
+/* 到底指示器 */
+.end-indicator {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+/* 错误指示器 */
+.error-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #ff6b6b;
+  font-size: 0.9rem;
+}
+
+/* 重试按钮 */
+.btn-retry {
+  padding: 0.3rem 0.75rem;
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-retry:hover {
+  background: #ee5a6f;
+}
+
+/* 响应式：小屏幕隐藏剩余天数列 */
+@media (max-width: 930px) {
+  .col-expires {
+    display: none;
+  }
+}
+
+/* ==================== 恢复进程提示文字样式 ==================== */
+
+/* 恢复进程提示文字 */
+.restore-process-hint {
+  margin: 0.5rem 0 0 0;
+  color: #999;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.restore-process-hint:hover {
+  color: #667eea;
+}
+
+/* ==================== 恢复进程弹窗样式 ==================== */
+
+/* 弹窗遮罩层 */
+.restore-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 半透明黑色背景 */
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  animation: backdrop-fade-in 0.3s ease;
+}
+
+/* 弹窗内容 */
+.modal-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: modal-slide-in 0.3s ease;
+}
+
+/* 标题栏 */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 标题文字 */
+.modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+}
+
+/* 加载动画（圆圈旋转） */
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #f0f0f0;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* 弹窗主体 */
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+  max-height: 400px;
+}
+
+/* 进程列表 */
+.process-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 进程项 */
+.process-item {
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #333;
+  line-height: 1.4;
+  border-bottom: 1px solid #f8f8f8;
+}
+
+.process-item:last-child {
+  border-bottom: none;
+}
+
+/* 弹窗底部 */
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #f0f0f0;
+  text-align: center;
+}
+
+/* 底部提示文字 */
+.footer-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #999;
+}
+
+/* ==================== 弹窗过渡动画 ==================== */
+
+/* 淡入淡出过渡 */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+
+/* 背景淡入动画 */
+@keyframes backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 弹窗滑入动画 */
+@keyframes modal-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 旋转动画 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

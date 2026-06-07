@@ -44,6 +44,70 @@ export function clearCurrentNodeId() {
   logger.info('已清除当前目录节点ID')
 }
 
+/**
+ * 获取父目录ID
+ * 从 sessionStorage 读取，如果不存在则返回 null
+ */
+export function getParentDirectoryId() {
+  const parentId = sessionStorage.getItem('parentDirectoryId')
+  return parentId ? parseInt(parentId) : null
+}
+
+/**
+ * 设置父目录ID
+ * @param {number|null} parentId - 父目录ID
+ */
+export function setParentDirectoryId(parentId) {
+  if (parentId) {
+    sessionStorage.setItem('parentDirectoryId', parentId.toString())
+    logger.info('设置父目录ID:', parentId)
+  } else {
+    sessionStorage.removeItem('parentDirectoryId')
+    logger.info('清除父目录ID')
+  }
+}
+
+/**
+ * 清除父目录ID（刷新页面时调用）
+ */
+export function clearParentDirectoryId() {
+  sessionStorage.removeItem('parentDirectoryId')
+  logger.info('已清除父目录ID')
+}
+
+// ==================== recycleBinId 管理（localStorage）====================
+
+/**
+ * 获取回收站ID
+ * 从 localStorage 读取，不随页面刷新清空
+ */
+export function getRecycleBinId() {
+  const id = localStorage.getItem('recycleBinId')
+  return id ? parseInt(id) : null
+}
+
+/**
+ * 设置回收站ID
+ * @param {number|null} id - 回收站ID
+ */
+export function setRecycleBinId(id) {
+  if (id) {
+    localStorage.setItem('recycleBinId', id.toString())
+    logger.info('设置回收站ID:', id)
+  } else {
+    localStorage.removeItem('recycleBinId')
+    logger.info('清除回收站ID')
+  }
+}
+
+/**
+ * 清除回收站ID（退出登录/401时调用）
+ */
+export function clearRecycleBinId() {
+  localStorage.removeItem('recycleBinId')
+  logger.info('已清除回收站ID')
+}
+
 // ==================== 浏览状态管理 ====================
 
 /**
@@ -346,6 +410,250 @@ export async function browseDirectory(params) {
   }
 }
 
+// ==================== 回收站浏览 ====================
+
+// 创建回收站专用的浏览状态管理器实例
+export const recycleBinState = new BrowseStateManager()
+
+/**
+ * 浏览回收站
+ * @param {Object} params - 请求参数
+ * @param {number} params.currentNodeId - 回收站根节点ID
+ * @param {number} params.maxPageSize - 每页最大数量
+ * @param {number|null} params.lastChildrenNode - 游标锚点ID
+ * @param {string|null} params.lastChildrenType - 游标锚点类型
+ * @param {number} params.sortedBy - 排序字段
+ * @param {number} params.order - 排序顺序
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function browseRecycleBin(params) {
+  const {
+    currentNodeId,
+    maxPageSize = 50,
+    lastChildrenNode = null,
+    lastChildrenType = null,
+    sortedBy = 0,
+    order = 0
+  } = params
+
+  // 构建查询参数
+  const queryParams = new URLSearchParams({
+    currentNodeId: currentNodeId.toString(),
+    maxPageSize: maxPageSize.toString(),
+    sortedBy: sortedBy.toString(),
+    order: order.toString()
+  })
+
+  // 添加可选参数
+  if (lastChildrenNode !== null && lastChildrenNode !== undefined) {
+    queryParams.append('lastChildrenNode', lastChildrenNode.toString())
+  }
+  
+  if (lastChildrenType) {
+    queryParams.append('lastChildrenType', lastChildrenType)
+  }
+
+  const url = `${BASE_API_URL}/files/recycle?${queryParams.toString()}`
+  
+  logger.info('请求浏览回收站:', {
+    url,
+    params: {
+      currentNodeId,
+      maxPageSize,
+      sortedBy,
+      order,
+      lastChildrenNode,
+      lastChildrenType
+    }
+  })
+
+  try {
+    const token = getToken()
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    
+    logger.info('浏览回收站响应:', result)
+
+    if (result.code === 200 && result.success) {
+      return {
+        success: true,
+        data: result.data,
+        message: result.message
+      }
+    } else {
+      throw new Error(result.message || '获取回收站失败')
+    }
+  } catch (error) {
+    logger.error('浏览回收站失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: error.message
+    }
+  }
+}
+
+/**
+ * 初始化回收站浏览（首次加载）
+ * @param {number} maxPageSize - 每页最大数量
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function initRecycleBinBrowse(maxPageSize = 50) {
+  // 重置状态
+  recycleBinState.reset()
+  
+  // 检查是否有回收站ID
+  const recycleBinId = getRecycleBinId()
+  if (!recycleBinId) {
+    logger.error('回收站ID为空')
+    return {
+      success: false,
+      message: '回收站ID为空，请重新登录'
+    }
+  }
+
+  // 设置加载状态
+  recycleBinState.isLoading = true
+
+  try {
+    const result = await browseRecycleBin({
+      currentNodeId: recycleBinId,
+      maxPageSize,
+      sortedBy: recycleBinState.sortedBy,
+      order: recycleBinState.order
+    })
+
+    if (result.success) {
+      // 更新游标状态
+      const pagination = result.data.pagination
+      recycleBinState.updateCursor(
+        pagination.lastChildrenNode,
+        pagination.lastChildrenType,
+        pagination.isEnd
+      )
+      
+      // 设置文件列表
+      recycleBinState.setFiles(result.data.children)
+      
+      return {
+        success: true,
+        data: result.data,
+        message: '加载成功'
+      }
+    } else {
+      return {
+        success: false,
+        message: result.message
+      }
+    }
+  } catch (error) {
+    logger.error('初始化回收站浏览失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: '网络错误，请稍后重试'
+    }
+  } finally {
+    // 清除加载状态
+    recycleBinState.isLoading = false
+  }
+}
+
+/**
+ * 加载更多回收站文件（游标分页）
+ * @param {number} maxPageSize - 每页最大数量
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function loadMoreRecycleBinFiles(maxPageSize = 50) {
+  const state = recycleBinState.getState()
+  
+  // 检查是否可以加载更多
+  if (state.isLoading) {
+    logger.info('跳过重复加载请求: 正在加载中')
+    return {
+      success: false,
+      message: '正在加载中...'
+    }
+  }
+  
+  if (!state.hasMore) {
+    logger.info('没有更多数据可加载')
+    return {
+      success: false,
+      message: '没有更多数据'
+    }
+  }
+
+  // 检查是否有回收站ID
+  const recycleBinId = getRecycleBinId()
+  if (!recycleBinId) {
+    logger.error('回收站ID为空')
+    return {
+      success: false,
+      message: '回收站ID为空'
+    }
+  }
+
+  // 设置加载状态
+  recycleBinState.isLoading = true
+
+  try {
+    const result = await browseRecycleBin({
+      currentNodeId: recycleBinId,
+      maxPageSize,
+      lastChildrenNode: state.lastChildrenNode,
+      lastChildrenType: state.lastChildrenType,
+      sortedBy: state.sortedBy,
+      order: state.order
+    })
+
+    if (result.success) {
+      // 更新游标状态
+      const pagination = result.data.pagination
+      recycleBinState.updateCursor(
+        pagination.lastChildrenNode,
+        pagination.lastChildrenType,
+        pagination.isEnd
+      )
+      
+      // 追加文件列表
+      recycleBinState.appendFiles(result.data.children)
+      
+      return {
+        success: true,
+        data: result.data,
+        message: '加载成功'
+      }
+    } else {
+      return {
+        success: false,
+        message: result.message
+      }
+    }
+  } catch (error) {
+    logger.error('加载更多回收站文件失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: '网络错误，请稍后重试'
+    }
+  } finally {
+    // 清除加载状态
+    recycleBinState.isLoading = false
+  }
+}
+
 /**
  * 加载更多文件（基于当前状态）
  * @param {number} maxPageSize - 每页最大数量
@@ -438,8 +746,18 @@ export async function loadMoreFiles(maxPageSize = 50) {
  * @returns {Promise<Object>} 响应数据
  */
 export async function initBrowse(maxPageSize = 50) {
-  // 重置状态
-  browseState.reset()
+  // ✅ 只重置游标和文件列表，保留排序状态
+  browseState.state.lastChildrenNode = null
+  browseState.state.lastChildrenType = null
+  browseState.state.isEnd = false
+  browseState.state.files = []
+  browseState.state.hasMore = true
+  browseState.state.isLoading = false
+  
+  logger.info('初始化浏览状态（保留排序）', { 
+    sortedBy: browseState.sortedBy, 
+    order: browseState.order 
+  })
   
   // 检查是否有当前节点ID
   const currentNodeId = getCurrentNodeId()
@@ -688,6 +1006,257 @@ export async function createFolder(parentId, folderName) {
     }
   } catch (error) {
     logger.error('创建文件夹失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: error.message
+    }
+  }
+}
+
+/**
+ * 删除节点（文件/文件夹）
+ * 软删除，移入回收站（30天后彻底删除）
+ * @param {number} nodeId - 节点 ID
+ * @param {number} nodeType - 节点类型（0=文件夹，1=文件）
+ * @param {number} version - 乐观锁版本号（从浏览接口获取）
+ * @param {string} batchId - 业务操作批次号（UUID格式，用于后端唯一标识一次删除操作）
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function deleteNode(nodeId, nodeType, version, batchId) {
+  const queryParams = new URLSearchParams({
+    nodeId: nodeId.toString(),
+    nodeType: nodeType.toString(),
+    version: version.toString(),
+    batchId: batchId
+  })
+
+  const url = `${FILE_API.DELETE}?${queryParams.toString()}`
+
+  logger.info('请求删除节点:', {
+    url,
+    params: { nodeId, nodeType, version, batchId }
+  })
+
+  try {
+    const token = getToken()
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    logger.info('删除节点响应:', result)
+
+    if (result.code === 200 && result.success) {
+      return {
+        success: true,
+        data: result.data,
+        message: result.message
+      }
+    } else {
+      throw new Error(result.message || '删除失败')
+    }
+  } catch (error) {
+    logger.error('删除节点失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: error.message
+    }
+  }
+}
+
+/**
+ * 恢复节点（文件/文件夹）
+ * 逐级异步恢复，与后台同步恢复信息
+ * 提示用户需要等待后台恢复完成，在此期间可以进行其他操作
+ * @param {string} batchId - 业务操作批次号（用于后端唯一标识删除请求）
+ * @param {number} version - 乐观锁版本号（从浏览接口获取）
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function restoreNode(batchId, version) {
+  const queryParams = new URLSearchParams({
+    batchId: batchId,
+    version: version.toString()
+  })
+
+  const url = `${FILE_API.RESTORE}?${queryParams.toString()}`
+
+  logger.info('请求恢复节点:', {
+    url,
+    params: { batchId, version }
+  })
+
+  try {
+    const token = getToken()
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    // ✅ 处理 204 No Content（恢复成功但原目录已删除，恢复到根目录）
+    if (response.status === 204) {
+      logger.warn('恢复节点响应: 204 No Content（原目录已删除，已恢复到用户根目录）')
+      return {
+        success: true,
+        code: 204,
+        data: null,
+        message: '原目录已删除，已恢复到用户根目录'
+      }
+    }
+
+    // 处理 200 OK（正常响应，有 JSON 数据）
+    const result = await response.json()
+    logger.info('恢复节点响应:', result)
+
+    if (result.code === 200 && result.success) {
+      return {
+        success: true,
+        code: result.code,
+        data: result.data,
+        message: result.message
+      }
+    } else {
+      throw new Error(result.message || '恢复失败')
+    }
+  } catch (error) {
+    logger.error('恢复节点失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: error.message
+    }
+  }
+}
+
+/**
+ * 获取恢复进程列表
+ * @returns {Promise<Array>} 恢复进程列表
+ */
+export async function getRestoreProcesses() {
+  const url = FILE_API.RESTORE_PROCESSES
+
+  logger.info('请求获取恢复进程列表')
+
+  try {
+    const token = getToken()
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    logger.info('获取恢复进程列表响应:', result)
+
+    if (result.code === 200 && result.success) {
+      return {
+        success: true,
+        data: result.data || [],
+        count: result.data ? result.data.length : 0
+      }
+    } else {
+      throw new Error(result.message || '获取恢复进程失败')
+    }
+  } catch (error) {
+    logger.error('获取恢复进程列表失败:', error)
+    return {
+      success: false,
+      error: error.message,
+      message: error.message,
+      data: []
+    }
+  }
+}
+
+/**
+ * 彻底删除节点（不可恢复）
+ * 支持两种模式：回收站模式（通过 batchId）或浏览界面模式（通过 nodeId）
+ * @param {boolean} mode - 模式：true=回收站模式，false=浏览界面模式
+ * @param {string} [batchId] - 业务操作批次号（mode=true时需填写）
+ * @param {number} [nodeId] - 节点ID（mode=false时需填写）
+ * @param {number} [version] - 乐观锁版本号（从浏览接口获取）
+ * @returns {Promise<Object>} 响应数据
+ */
+export async function permanentDelete(mode, batchId, nodeId, version) {
+  const queryParams = new URLSearchParams({
+    mode: mode.toString()
+  })
+
+  // 根据模式添加不同参数
+  if (mode) {
+    // 回收站模式：需要 batchId
+    if (!batchId) {
+      throw new Error('回收站模式必须提供 batchId')
+    }
+    queryParams.append('batchId', batchId)
+  } else {
+    // 浏览界面模式：需要 nodeId
+    if (!nodeId) {
+      throw new Error('浏览界面模式必须提供 nodeId')
+    }
+    queryParams.append('nodeId', nodeId.toString())
+    if (version !== undefined && version !== null) {
+      queryParams.append('version', version.toString())
+    }
+  }
+
+  const url = `${FILE_API.PERMANENT_DELETE}?${queryParams.toString()}`
+
+  logger.info('请求彻底删除节点:', {
+    url,
+    params: { mode, batchId, nodeId, version }
+  })
+
+  try {
+    const token = getToken()
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    logger.info('彻底删除节点响应:', result)
+
+    if (result.code === 200 && result.success) {
+      return {
+        success: true,
+        data: result.data,
+        message: result.message
+      }
+    } else {
+      throw new Error(result.message || '彻底删除失败')
+    }
+  } catch (error) {
+    logger.error('彻底删除节点失败:', error)
     return {
       success: false,
       error: error.message,

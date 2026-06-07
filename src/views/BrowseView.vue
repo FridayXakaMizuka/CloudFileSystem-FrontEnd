@@ -248,20 +248,20 @@
           </tbody>
         </table>
       </div>
-    </div>
-
-    <!-- 加载更多/到底提示 -->
-    <div ref="loadMoreTrigger" class="load-more-trigger">
-      <div v-if="isLoading" class="loading-indicator">
-        <span class="loading-spinner">⏳</span>
-        <span>加载中...</span>
-      </div>
-      <div v-else-if="!hasMore && files.length > 0" class="end-indicator">
-        <span>已经到底啦~ 🎉</span>
-      </div>
-      <div v-else-if="loadError" class="error-indicator">
-        <span>⚠️ {{ loadError }}</span>
-        <button @click="handleRetryLoad" class="btn-retry">重试</button>
+      
+      <!-- ✅ 加载更多/到底提示 - 移动到 file-list 内部 -->
+      <div ref="loadMoreTrigger" class="load-more-trigger">
+        <div v-if="isLoading" class="loading-indicator">
+          <span class="loading-spinner">⏳</span>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="!hasMore && files.length > 0" class="end-indicator">
+          <span>已经到底啦~ 🎉</span>
+        </div>
+        <div v-else-if="loadError" class="error-indicator">
+          <span>⚠️ {{ loadError }}</span>
+          <button @click="handleRetryLoad" class="btn-retry">重试</button>
+        </div>
       </div>
     </div>
   </div>
@@ -272,16 +272,20 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { createLogger } from '@/utils/logger'
 import { getCachedUserInfo } from '@/utils/userInfo'
+import { showInfo, showSuccess, showError } from '@/utils/toast'
 import { 
   browseState, 
   getCurrentNodeId,
   setCurrentNodeId,
+  getParentDirectoryId,
+  setParentDirectoryId,
   initBrowse,
   loadMoreFiles,
   calculateMaxPageSize,
   createFolder,
   generateSmartFolderName,
-  formatDateTime
+  formatDateTime,
+  deleteNode
 } from '@/utils/directory'
 
 const logger = createLogger('BrowseView')
@@ -385,6 +389,13 @@ const loadDirectory = async () => {
       logger.error('加载目录失败:', result.message)
     } else {
       logger.info('目录加载成功', { count: files.value.length })
+      
+      // ✅ 保存当前目录的parentId到sessionStorage（会话级变量）
+      if (result.data && result.data.currentNode && result.data.currentNode.parentId !== undefined) {
+        const parentId = result.data.currentNode.parentId
+        setParentDirectoryId(parentId)
+        logger.info('已保存父目录ID:', parentId)
+      }
     }
   } catch (error) {
     logger.error('加载目录异常:', error)
@@ -504,11 +515,44 @@ const toggleView = () => {
 
 /**
  * 处理返回上一级操作
+ * 检查是否为根目录，若不是则浏览父目录
  */
-const handleGoBack = () => {
+const handleGoBack = async () => {
   logger.info('返回上一级')
-  // TODO: 实现返回上一级逻辑
-  alert('返回上一级功能待实现')
+  
+  // 1. 检查当前 currentNodeId 是否为 homeDirectoryId（根目录）
+  const currentNodeId = getCurrentNodeId()
+  const cachedUserInfo = getCachedUserInfo()
+  const homeDirectoryId = cachedUserInfo?.homeDirectoryId
+  
+  if (!homeDirectoryId) {
+    logger.error('无法获取 homeDirectoryId')
+    return
+  }
+  
+  if (currentNodeId === homeDirectoryId) {
+    // ✅ 当前是根目录，弹出提示
+    showInfo('已经是第一页啦~')
+    logger.info('当前已是根目录，无法返回上一级')
+    return
+  }
+  
+  // 2. 获取父目录ID（session级变量）
+  const parentId = getParentDirectoryId()
+  if (!parentId) {
+    logger.warn('无法获取父目录ID')
+    showInfo('已经是第一页啦~')
+    return
+  }
+  
+  // 3. 更新 currentNodeId 为 parentId，然后重新加载目录
+  setCurrentNodeId(parentId)
+  logger.info('导航到父目录:', parentId)
+  
+  // 4. 调用 loadDirectory，它会：
+  //    - 使用新的 currentNodeId（即原来的 parentId）发起 /files/browse 请求
+  //    - 成功后自动从响应中更新 parentDirectoryId（祖父目录ID）
+  await loadDirectory()
 }
 
 /**
@@ -648,10 +692,19 @@ const cancelCreateFolder = () => {
  * 处理文件双击操作（文件夹打开，文件下载）
  * @param {Object} file - 文件对象
  */
-const handleFileAction = (file) => {
+const handleFileAction = async (file) => {
   if (file.type === 'folder') {
-    alert(`打开文件夹：${file.name}`)
+    // ✅ 打开子文件夹：更新 currentNodeId 并加载该文件夹内容
+    logger.info('打开子文件夹:', { name: file.name, id: file.id })
+    
+    // 1. 设置 currentNodeId 为子文件夹的 ID
+    setCurrentNodeId(file.id)
+    
+    // 2. 调用 loadDirectory 加载子文件夹内容
+    //    成功后会自动更新 parentDirectoryId（即当前目录的 ID）
+    await loadDirectory()
   } else {
+    // 文件双击执行下载
     handleDownload(file)
   }
 }
@@ -666,12 +719,40 @@ const handleDownload = (file) => {
 
 /**
  * 处理文件删除操作
+ * 调用 DELETE /files 接口软删除，成功后从列表中移除
  * @param {Object} file - 文件对象
  */
-const handleDelete = (file) => {
-  if (confirm(`确定要删除 "${file.name}" 吗？`)) {
-    // 从列表中过滤掉被删除的文件
-    files.value = files.value.filter(f => f.id !== file.id)
+const handleDelete = async (file) => {
+  if (!confirm(`确定要删除 "${file.name}" 吗？\n删除后移入回收站，30天后彻底删除`)) {
+    return
+  }
+
+  try {
+    // 转换 nodeType：文件夹=0，文件=1
+    const nodeType = file.type === 'folder' ? 0 : 1
+    
+    // 获取 version（乐观锁版本号）
+    const version = file.version || 0
+    
+    // 生成唯一的 batchId（UUID格式，用于后端追踪删除进程）
+    const batchId = crypto.randomUUID()
+    
+    logger.info('删除节点:', { nodeId: file.id, nodeType, version, name: file.name, batchId })
+    
+    const result = await deleteNode(file.id, nodeType, version, batchId)
+    
+    if (result.success) {
+      // 从列表中移除被删除的节点
+      browseState.state.files = browseState.state.files.filter(f => f.id !== file.id)
+      showSuccess(`"${file.name}" 已移入回收站`)
+      logger.info('删除成功:', result.message)
+    } else {
+      showError(`删除失败：${result.message}`)
+      logger.error('删除失败:', result.message)
+    }
+  } catch (error) {
+    showError('网络错误，请稍后重试')
+    logger.error('删除节点异常:', error)
   }
 }
 
@@ -711,16 +792,33 @@ const setupIntersectionObserver = () => {
     observer.disconnect()
   }
   
+  // ✅ 获取 .file-list 容器作为观察的根元素
+  const fileListComponent = document.querySelector('.file-list')
+  
   observer = new IntersectionObserver((entries) => {
+    logger.info('Intersection Observer 触发', {
+      isIntersecting: entries[0].isIntersecting,
+      isLoading: isLoading.value,
+      hasMore: hasMore.value,
+      loadError: loadError.value
+    })
+    
     if (entries[0].isIntersecting && !isLoading.value && hasMore.value && !loadError.value) {
+      logger.info('✅ 开始加载更多')
       handleLoadMore()
+    } else {
+      logger.info('❌ 不满足加载条件')
     }
   }, {
+    root: fileListComponent, // ✅ 指定 .file-list 为观察容器
     rootMargin: '100px' // 提前100px开始加载
   })
   
   if (loadMoreTrigger.value) {
     observer.observe(loadMoreTrigger.value)
+    logger.info('✅ 已观察 loadMoreTrigger 元素')
+  } else {
+    logger.warn('⚠️ loadMoreTrigger 元素不存在')
   }
 }
 
@@ -1009,6 +1107,7 @@ onUnmounted(() => {
 .file-list {
   flex: 1; /* 占据剩余空间 */
   overflow-y: auto; /* 垂直方向可滚动 */
+  padding: 2rem; /* 内边距 */
 }
 
 /* 空状态提示：居中显示 */

@@ -85,11 +85,23 @@ export const FILE_API = {
   // 浏览文件
   BROWSE: `${BASE_API_URL}/files/browse`,
   
+  // 浏览回收站
+  RECYCLE: `${BASE_API_URL}/files/recycle`,
+  
   // 下载文件
   DOWNLOAD: `${BASE_API_URL}/files/download`,
   
-  // 删除文件
+  // 删除文件/文件夹（DELETE /files/delete?batchId=&nodeId=&nodeType=&version=）
   DELETE: `${BASE_API_URL}/files/delete`,
+
+  // 彻底删除（DELETE /files/delete/permanent?mode=&batchId=&nodeId=&version=）
+  PERMANENT_DELETE: `${BASE_API_URL}/files/delete/permanent`,
+
+  //恢复文件/文件夹 (POST /files/recycle/restore?batchId=&version=)
+  RESTORE: `${BASE_API_URL}/files/recycle/restore`,
+  
+  // 获取恢复进程列表 (GET /files/recycle/restore/processes)
+  RESTORE_PROCESSES: `${BASE_API_URL}/files/recycle/restore/processes`,
   
   // 创建文件夹
   CREATE_FOLDER: `${BASE_API_URL}/files/folder`,

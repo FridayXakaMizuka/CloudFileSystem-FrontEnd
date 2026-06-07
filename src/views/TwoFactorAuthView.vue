@@ -232,7 +232,7 @@ import { saveAuthInfo, resetUserInfo } from '@/utils/auth'
 import { fetchAllUserInfo } from '@/utils/userInfo'
 import { addAllRequestHeaders } from '@/utils/requestHeaders'
 import { showSuccess, showError } from '@/utils/toast'
-import { setCurrentNodeId } from '@/utils/directory'
+import { setCurrentNodeId, setRecycleBinId } from '@/utils/directory'
 
 const logger = createLogger('TwoFactorAuth')
 const router = useRouter()
@@ -558,6 +558,12 @@ const handleVerify = async () => {
           if (allUserInfo.homeDirectoryId) {
             setCurrentNodeId(allUserInfo.homeDirectoryId)
             logger.info('已设置 currentNodeId:', allUserInfo.homeDirectoryId)
+          }
+          
+          // ✅ 设置 recycleBinId 到 localStorage（持久化）
+          if (allUserInfo.recycleBinId) {
+            setRecycleBinId(allUserInfo.recycleBinId)
+            logger.info('已设置 recycleBinId:', allUserInfo.recycleBinId)
           }
         }
         

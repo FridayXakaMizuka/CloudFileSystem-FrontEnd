@@ -3,7 +3,7 @@ import { onMounted } from 'vue'
 import { getUserInfo as fetchUserInfo } from '@/utils/userInfo'
 import { isLoggedIn } from '@/utils/auth'
 import { createLogger } from '@/utils/logger'
-import { clearCurrentNodeId } from '@/utils/directory'
+import { clearCurrentNodeId, clearParentDirectoryId } from '@/utils/directory'
 
 const logger = createLogger('App')
 
@@ -11,9 +11,10 @@ const logger = createLogger('App')
  * 应用启动时获取用户信息（只执行一次）
  */
 onMounted(async () => {
-  // ✅ 页面刷新时清除 currentNodeId（会话级变量）
+  // ✅ 页面刷新时清除 currentNodeId 和 parentDirectoryId（会话级变量）
   clearCurrentNodeId()
-  logger.info('已清除 currentNodeId')
+  clearParentDirectoryId()
+  logger.info('已清除 currentNodeId 和 parentDirectoryId')
   
   // 检查用户是否已登录
   if (isLoggedIn()) {

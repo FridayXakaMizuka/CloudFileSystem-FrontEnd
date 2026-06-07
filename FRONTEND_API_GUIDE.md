@@ -1,8 +1,7 @@
 # 云文件系统 - 前端接口文档
 
-> **版本**: v2.0  
-> **更新日期**: 2026-05-10  
-> **基础URL**: `/files`  
+> **版本**: v2.3  
+> **更新日期**: 2026-06-04  
 > **认证方式**: JWT Token（在请求头中携带 `Authorization: Bearer {token}`）
 
 ---
@@ -53,7 +52,7 @@
 
 ## ✅1. 浏览目录
 
-**接口**: `GET /browse`
+**接口**: `GET /files/browse`
 
 **功能**: 浏览指定目录下的子节点（支持游标分页、多种排序）
 
@@ -156,14 +155,12 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ### 请求参数
 
-| 参数名 | 类型 | 必填 | 默认值 | 说明 |
-|--------|------|------|--------|------|
-| `currentNodeId` | Long | ✅ | - | 回收站根节点ID |
-| `lastChildrenNode` | Long | ❌ | null | 游标锚点 |
-| `lastChildrenType` | String | ❌ | null | 游标锚点类型 |
-| `maxPageSize` | Integer | ❌ | 50 | 每页数量 |
-| `sortedBy` | Integer | ❌ | 0 | 排序字段 |
-| `order` | Integer | ❌ | 1 | 排序顺序（默认降序） |
+| 参数名           | 类型      | 必填 | 默认值  | 说明                                                            |
+|---------------|---------|--|------|---------------------------------------------------------------|
+| `lastBatchId` | Long    | ❌ | null | 游标锚点（最后一个删除业务的ID）                                             |
+| `maxPageSize` | Integer | ❌ | 20   | 每页数量                                                          |
+| `sortedBy`    | Integer | ❌ | 2    | 排序字段：0=name（名称）, 1=size（大小，只对文件起效，文件夹与0等效）, 2=deletedAt（删除时间） |
+| `order`       | Boolean | ❌ | true | 排序顺序：false=asc（升序）, true=desc（降序）                             |
 
 ### 响应示例
 
@@ -173,56 +170,40 @@ async function browseDirectory(currentNodeId, cursor = null) {
   "success": true,
   "message": "获取成功",
   "data": {
-    "currentNode": {
-      "id": 5000,
-      "name": "_recycle_bin",
-      "path": "_root/_recycle_bin/10001",
-      "parentId": 4
-    },
-    "children": [
-      {
-        "id": 339,
+    "list": [
+      { 
+        "batchId": "this-is-a-UUID1",
         "name": "work.pdf",
         "type": "file",
         "size": 1048576,
-        "mimeType": "application/pdf",
         "deletedAt": "2026-05-05T10:05:00",
         "expiresAt": "2026-06-04T10:05:00",
-        "daysRemaining": 29
+        "version": 2 //乐观锁版本号
       },
+      ...
       {
-        "id": 9178,
+        "batchId": "this-is-a-UUID20",
         "name": "work",
         "type": "folder",
-        "hasChildren": true,
-        "childCount": 5,
         "deletedAt": "2026-05-05T10:00:00",
         "expiresAt": "2026-06-04T10:00:00",
-        "daysRemaining": 29
+        "version": 114514
       }
     ],
     "pagination": {
-      "lastChildrenNode": 9178,
-      "lastChildrenType": "folder",
+      "lastBatchId": "this-is-a-UUID2",
       "isEnd": false
     }
   }
 }
 ```
-
-### 回收站特有字段
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `deletedAt` | DateTime | 删除时间 |
-| `expiresAt` | DateTime | 过期时间（30天后） |
-| `daysRemaining` | Integer | 剩余天数 |
+- 注：文件夹删除时batchId只记录所删除文件夹，通过后端数据库记录文件夹下的所有子节点
 
 ---
 
 ## 3. 创建文件夹
 
-**接口**: `POST /folder`
+**接口**: `POST /files/folder`
 
 **功能**: 在指定父目录下创建新文件夹（支持从待分配池复用）
 
@@ -262,7 +243,7 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ## 4. 重命名节点
 
-**接口**: `PUT /rename/{nodeId}`
+**接口**: `PUT /files/rename/{nodeId}`
 
 **功能**: 重命名文件夹或文件
 
@@ -295,7 +276,7 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ## 5. 移动节点
 
-**接口**: `PUT /move/{nodeId}`
+**接口**: `PUT /files/move/{nodeId}`
 
 **功能**: 将文件或文件夹移动到新目录
 
@@ -333,15 +314,18 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ## 6. 删除节点
 
-**接口**: `DELETE /{nodeId}`
+**接口**: `DELETE /files/delete`
 
 **功能**: 软删除节点，移入回收站（30天后彻底删除）
 
-### 路径参数
+### 请求参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `nodeId` | Long | 节点ID |
+| 参数         | 类型      | 说明                      |
+|------------|---------|-------------------------|
+| `batchId`  | String  | 业务操作批次号（用于后端唯一标识一次删除操作） |
+| `nodeId`   | Long    | 节点ID                    |
+| `nodeType` | Boolean | 节点类型（0为文件夹1为文件）         |
+| `version`  | Long    | 乐观锁版本号（从浏览接口获取）         |
 
 ### 响应示例
 
@@ -351,8 +335,8 @@ async function browseDirectory(currentNodeId, cursor = null) {
   "success": true,
   "message": "已移入回收站，30天后彻底删除",
   "data": {
-    "recycleBinPath": "_root/_recycle_bin/10001/deleted_folder_001",
-    "expiresAt": "2026-06-04T10:00:00"
+    "expiresAt": "2026-06-04T10:00:00",
+    "version": 3
   }
 }
 ```
@@ -361,17 +345,32 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ## 7. 恢复节点
 
-**接口**: `POST /recycle/restore/{nodeId}`
+**接口**: `POST /files/recycle/restore`
 
-**功能**: 从回收站恢复文件或文件夹
+**功能**: 从回收站恢复文件或文件夹。（如果后端删除记录未完成，则停止后端删除任务，再启动恢复任务；如果其父目录被删除或被清理，则恢复后移至当前用户根目录）
 
 ### 路径参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `nodeId` | Long | 节点ID |
+| 参数 | 类型 | 说明                    |
+|------|------|-----------------------|
+| `batchId`  | String  | 业务操作批次号（用于后端唯一标识删除请求） |
+| `version`  | Long    | （根目录）乐观锁版本号（从浏览接口获取）  |
 
-### 响应示例
+### 响应示例 1（恢复"restored_folder1"）
+
+```json
+{
+  "code": 200,
+  "success": true,
+  "message": "原目录已删除，已恢复到用户根目录",
+  "data": {
+    "newName": "restored_folder1(3)", 
+    "restoredPath": "_root/_files/10001/restored_folder1(3)"
+  }
+}
+```
+
+### 响应示例 2（恢复"restored_folder2"）
 
 ```json
 {
@@ -379,7 +378,8 @@ async function browseDirectory(currentNodeId, cursor = null) {
   "success": true,
   "message": "恢复成功",
   "data": {
-    "restoredPath": "_root/_files/10001/documents/restored_folder"
+    "newName": "restored_folder2",
+    "restoredPath": "_root/_files/10001/document/restored_folder2"
   }
 }
 ```
@@ -388,20 +388,24 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 1. 如果原始位置仍存在，恢复到原位置
 2. 如果原始位置已删除，恢复到用户根目录
+3. 如需重命名则后端自动重命名
 
 ---
 
 ## 8. 彻底删除
 
-**接口**: `DELETE /permanent/{nodeId}`
+**接口**: `DELETE /files/delete/permanent`
 
-**功能**: 彻底删除回收站中的节点（不可恢复）
+**功能**: 彻底删除节点（用户在回收站中或直接在目录中进行彻底删除，不可恢复）
 
-### 路径参数
+### 请求参数
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `nodeId` | Long | 节点ID |
+| 参数        | 类型      | 说明                         |
+|-----------|---------|----------------------------|
+| `mode`    | Boolean | 模式：true=回收站模式，false=浏览界面模式 |
+| `nodeId`  | Long    | 节点ID（mode=false时需填写）       |
+| `batchId` | String  | 业务操作批次号（mode=true时需填写）     |
+| `version` | Long    | 乐观锁版本号（从浏览接口获取）            |
 
 ### 响应示例
 
@@ -416,14 +420,13 @@ async function browseDirectory(currentNodeId, cursor = null) {
 
 ### 权限要求
 
-- 必须是节点的所有者
-- 节点必须在回收站中
+- 必须是管理员或节点的所有者
 
 ---
 
 ## 9. 搜索文件/文件夹
 
-**接口**: `GET /search`
+**接口**: `GET /files/search`
 
 **功能**: 统一游标分页搜索（推荐用于生产环境）⭐
 
@@ -546,7 +549,7 @@ function loadMore() {
 
 ## 10. 搜索回收站
 
-**接口**: `GET /recycle/search`
+**接口**: `GET /files/recycle/search`
 
 **功能**: 搜索回收站中的内容（统一游标分页）⭐
 

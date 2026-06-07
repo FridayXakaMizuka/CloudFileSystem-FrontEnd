@@ -11,7 +11,7 @@
 import { addAllRequestHeaders } from './requestHeaders'
 import { createLogger } from './logger'
 import { clearAuthInfo } from './auth'
-import { clearCurrentNodeId } from './directory'
+import { clearCurrentNodeId, clearRecycleBinId } from './directory'
 
 const logger = createLogger('FetchInterceptor')
 
@@ -42,7 +42,7 @@ window.fetch = async function(url, options = {}) {
       headers = new Headers()
     }
     
-    // 添加所有安全请求头
+    // 添加所有安全请求头（阻塞等待，确保请求头完整后再发送）
     await addAllRequestHeaders(headers)
     
     // 构建新的 options
@@ -122,6 +122,9 @@ window.fetch = async function(url, options = {}) {
         
         // ✅ 清除 currentNodeId（会话级变量）
         clearCurrentNodeId()
+        
+        // ✅ 清除 recycleBinId（localStorage）
+        clearRecycleBinId()
         
         // 跳转到登录页面
         window.location.href = '/login'

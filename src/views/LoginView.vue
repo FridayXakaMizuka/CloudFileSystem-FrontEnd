@@ -67,7 +67,7 @@ import { fetchAllUserInfo } from '@/utils/userInfo'
 import { showSuccess, showError } from '@/utils/toast'
 import { clearSessionId } from '@/utils/sessionId'
 import { addAllRequestHeaders } from '@/utils/requestHeaders'
-import { setCurrentNodeId } from '@/utils/directory'
+import { setCurrentNodeId, setRecycleBinId } from '@/utils/directory'
 
 const logger = createLogger('LoginView')
 
@@ -238,6 +238,12 @@ const handleLogin = async () => {
         if (allUserInfo.homeDirectoryId) {
           setCurrentNodeId(allUserInfo.homeDirectoryId)
           logger.info('已设置 currentNodeId:', allUserInfo.homeDirectoryId)
+        }
+        
+        // ✅ 设置 recycleBinId 到 localStorage（持久化）
+        if (allUserInfo.recycleBinId) {
+          setRecycleBinId(allUserInfo.recycleBinId)
+          logger.info('已设置 recycleBinId:', allUserInfo.recycleBinId)
         }
       } else {
         logger.warn('用户信息获取失败，但不影响登录')
