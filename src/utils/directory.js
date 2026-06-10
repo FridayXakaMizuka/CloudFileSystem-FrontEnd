@@ -418,53 +418,40 @@ export const recycleBinState = new BrowseStateManager()
 /**
  * 浏览回收站
  * @param {Object} params - 请求参数
- * @param {number} params.currentNodeId - 回收站根节点ID
- * @param {number} params.maxPageSize - 每页最大数量
- * @param {number|null} params.lastChildrenNode - 游标锚点ID
- * @param {string|null} params.lastChildrenType - 游标锚点类型
- * @param {number} params.sortedBy - 排序字段
- * @param {number} params.order - 排序顺序
+ * @param {number} params.maxPageSize - 每页最大数量（默认20）
+ * @param {string|null} params.lastBatchId - 游标锚点ID（首次加载不传，后续使用上次响应的lastBatchId）
  * @returns {Promise<Object>} 响应数据
+ * 
+ * 注意：
+ * - 后端基于回收站任务batch管理，不再使用目录结构
+ * - 不需要传递 currentNodeId、sortedBy、order 等参数
+ * - 后端从 JWT token 自动获取用户信息并查询对应的回收站
  */
 export async function browseRecycleBin(params) {
   const {
-    currentNodeId,
-    maxPageSize = 50,
-    lastChildrenNode = null,
-    lastChildrenType = null,
-    sortedBy = 0,
-    order = 0
+    maxPageSize = 20,
+    lastBatchId = null
   } = params
 
   // 构建查询参数
   const queryParams = new URLSearchParams({
-    currentNodeId: currentNodeId.toString(),
-    maxPageSize: maxPageSize.toString(),
-    sortedBy: sortedBy.toString(),
-    order: order.toString()
+    maxPageSize: maxPageSize.toString()
   })
 
-  // 添加可选参数
-  if (lastChildrenNode !== null && lastChildrenNode !== undefined) {
-    queryParams.append('lastChildrenNode', lastChildrenNode.toString())
-  }
-  
-  if (lastChildrenType) {
-    queryParams.append('lastChildrenType', lastChildrenType)
+  // 添加可选参数：游标锚点
+  if (lastBatchId) {
+    queryParams.append('lastBatchId', lastBatchId)
   }
 
-  const url = `${BASE_API_URL}/files/recycle?${queryParams.toString()}`
+  const url = `${FILE_API.RECYCLE}?${queryParams.toString()}`
   
-  logger.info('请求浏览回收站:', {
+  logger.info('🔴 [browseRecycleBin] 请求浏览回收站:', {
     url,
     params: {
-      currentNodeId,
       maxPageSize,
-      sortedBy,
-      order,
-      lastChildrenNode,
-      lastChildrenType
-    }
+      lastBatchId
+    },
+    timestamp: new Date().toISOString()
   })
 
   try {
@@ -483,7 +470,12 @@ export async function browseRecycleBin(params) {
 
     const result = await response.json()
     
-    logger.info('浏览回收站响应:', result)
+    logger.info('🔴 [browseRecycleBin] 浏览回收站响应:', {
+      code: result.code,
+      success: result.success,
+      childrenCount: result.data?.children?.length,
+      timestamp: new Date().toISOString()
+    })
 
     if (result.code === 200 && result.success) {
       return {
@@ -495,7 +487,7 @@ export async function browseRecycleBin(params) {
       throw new Error(result.message || '获取回收站失败')
     }
   } catch (error) {
-    logger.error('浏览回收站失败:', error)
+    logger.error('❌ [browseRecycleBin] 浏览回收站失败:', error)
     return {
       success: false,
       error: error.message,
@@ -509,42 +501,37 @@ export async function browseRecycleBin(params) {
  * @param {number} maxPageSize - 每页最大数量
  * @returns {Promise<Object>} 响应数据
  */
-export async function initRecycleBinBrowse(maxPageSize = 50) {
+export async function initRecycleBinBrowse(maxPageSize = 20) {
+  logger.info('🔵 [initRecycleBinBrowse] 开始初始化回收站浏览', { maxPageSize })
+  
   // 重置状态
   recycleBinState.reset()
-  
-  // 检查是否有回收站ID
-  const recycleBinId = getRecycleBinId()
-  if (!recycleBinId) {
-    logger.error('回收站ID为空')
-    return {
-      success: false,
-      message: '回收站ID为空，请重新登录'
-    }
-  }
 
   // 设置加载状态
   recycleBinState.isLoading = true
+  logger.info('🔵 [initRecycleBinBrowse] 加载状态已设置', { isLoading: recycleBinState.isLoading })
 
   try {
     const result = await browseRecycleBin({
-      currentNodeId: recycleBinId,
-      maxPageSize,
-      sortedBy: recycleBinState.sortedBy,
-      order: recycleBinState.order
+      maxPageSize
     })
 
     if (result.success) {
-      // 更新游标状态
+      // ✅ 更新游标状态：使用 lastBatchId
       const pagination = result.data.pagination
       recycleBinState.updateCursor(
-        pagination.lastChildrenNode,
-        pagination.lastChildrenType,
+        pagination.lastBatchId,  // ✅ 使用 lastBatchId
+        null,                     // nodeType 不再需要
         pagination.isEnd
       )
       
       // 设置文件列表
       recycleBinState.setFiles(result.data.children)
+      
+      logger.info('✅ [initRecycleBinBrowse] 初始化成功', { 
+        filesCount: result.data.children.length,
+        hasMore: pagination.isEnd === false
+      })
       
       return {
         success: true,
@@ -552,13 +539,14 @@ export async function initRecycleBinBrowse(maxPageSize = 50) {
         message: '加载成功'
       }
     } else {
+      logger.warn('⚠️ [initRecycleBinBrowse] 初始化失败', { message: result.message })
       return {
         success: false,
         message: result.message
       }
     }
   } catch (error) {
-    logger.error('初始化回收站浏览失败:', error)
+    logger.error('❌ [initRecycleBinBrowse] 初始化异常:', error)
     return {
       success: false,
       error: error.message,
@@ -567,6 +555,7 @@ export async function initRecycleBinBrowse(maxPageSize = 50) {
   } finally {
     // 清除加载状态
     recycleBinState.isLoading = false
+    logger.info('🔵 [initRecycleBinBrowse] 加载状态已清除', { isLoading: recycleBinState.isLoading })
   }
 }
 
@@ -575,12 +564,14 @@ export async function initRecycleBinBrowse(maxPageSize = 50) {
  * @param {number} maxPageSize - 每页最大数量
  * @returns {Promise<Object>} 响应数据
  */
-export async function loadMoreRecycleBinFiles(maxPageSize = 50) {
+export async function loadMoreRecycleBinFiles(maxPageSize = 20) {
+  logger.info('🟢 [loadMoreRecycleBinFiles] 开始加载更多回收站文件', { maxPageSize })
+  
   const state = recycleBinState.getState()
   
   // 检查是否可以加载更多
   if (state.isLoading) {
-    logger.info('跳过重复加载请求: 正在加载中')
+    logger.info('⏭️ [loadMoreRecycleBinFiles] 跳过重复加载请求: 正在加载中')
     return {
       success: false,
       message: '正在加载中...'
@@ -588,47 +579,40 @@ export async function loadMoreRecycleBinFiles(maxPageSize = 50) {
   }
   
   if (!state.hasMore) {
-    logger.info('没有更多数据可加载')
+    logger.info('⏹️ [loadMoreRecycleBinFiles] 没有更多数据可加载')
     return {
       success: false,
       message: '没有更多数据'
     }
   }
 
-  // 检查是否有回收站ID
-  const recycleBinId = getRecycleBinId()
-  if (!recycleBinId) {
-    logger.error('回收站ID为空')
-    return {
-      success: false,
-      message: '回收站ID为空'
-    }
-  }
-
   // 设置加载状态
   recycleBinState.isLoading = true
+  logger.info('🟢 [loadMoreRecycleBinFiles] 加载状态已设置', { isLoading: recycleBinState.isLoading })
 
   try {
     const result = await browseRecycleBin({
-      currentNodeId: recycleBinId,
       maxPageSize,
-      lastChildrenNode: state.lastChildrenNode,
-      lastChildrenType: state.lastChildrenType,
-      sortedBy: state.sortedBy,
-      order: state.order
+      lastBatchId: state.lastChildrenNode  // ✅ 使用 lastBatchId 作为游标
     })
 
     if (result.success) {
-      // 更新游标状态
+      // ✅ 更新游标状态：使用 lastBatchId
       const pagination = result.data.pagination
       recycleBinState.updateCursor(
-        pagination.lastChildrenNode,
-        pagination.lastChildrenType,
+        pagination.lastBatchId,  // ✅ 使用 lastBatchId
+        null,                     // nodeType 不再需要
         pagination.isEnd
       )
       
       // 追加文件列表
       recycleBinState.appendFiles(result.data.children)
+      
+      logger.info('✅ [loadMoreRecycleBinFiles] 加载成功', { 
+        filesCount: result.data.children.length,
+        totalFiles: recycleBinState.files.length,
+        hasMore: pagination.isEnd === false
+      })
       
       return {
         success: true,
@@ -636,13 +620,14 @@ export async function loadMoreRecycleBinFiles(maxPageSize = 50) {
         message: '加载成功'
       }
     } else {
+      logger.warn('⚠️ [loadMoreRecycleBinFiles] 加载失败', { message: result.message })
       return {
         success: false,
         message: result.message
       }
     }
   } catch (error) {
-    logger.error('加载更多回收站文件失败:', error)
+    logger.error('❌ [loadMoreRecycleBinFiles] 加载异常:', error)
     return {
       success: false,
       error: error.message,
@@ -651,6 +636,7 @@ export async function loadMoreRecycleBinFiles(maxPageSize = 50) {
   } finally {
     // 清除加载状态
     recycleBinState.isLoading = false
+    logger.info('🟢 [loadMoreRecycleBinFiles] 加载状态已清除', { isLoading: recycleBinState.isLoading })
   }
 }
 
@@ -746,6 +732,8 @@ export async function loadMoreFiles(maxPageSize = 50) {
  * @returns {Promise<Object>} 响应数据
  */
 export async function initBrowse(maxPageSize = 50) {
+  logger.info('🔵 [initBrowse] 开始初始化浏览', { maxPageSize })
+  
   // ✅ 只重置游标和文件列表，保留排序状态
   browseState.state.lastChildrenNode = null
   browseState.state.lastChildrenType = null
@@ -754,9 +742,15 @@ export async function initBrowse(maxPageSize = 50) {
   browseState.state.hasMore = true
   browseState.state.isLoading = false
   
-  logger.info('初始化浏览状态（保留排序）', { 
+  // ✅ 清空排除列表：进入新目录时需要清空
+  browseState.state.excludeNewFileIds = []
+  browseState.state.excludeNewFolderIds = []
+  
+  logger.info('初始化浏览状态（保留排序，清空排除列表）', { 
     sortedBy: browseState.sortedBy, 
-    order: browseState.order 
+    order: browseState.order,
+    excludeNewFileIds: [],
+    excludeNewFolderIds: []
   })
   
   // 检查是否有当前节点ID

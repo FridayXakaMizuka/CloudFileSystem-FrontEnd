@@ -107,8 +107,8 @@
               
               <!-- 剩余天数列 -->
               <td class="col-expires">
-                <span class="expires-text" :class="{ 'expires-warning': file.daysRemaining <= 7 }">
-                  {{ file.daysRemaining !== undefined ? file.daysRemaining + ' 天' : '--' }}
+                <span class="expires-text" :class="{ 'expires-warning': calculateDaysRemaining(file.deletedAt) <= 7 }">
+                  {{ calculateDaysRemaining(file.deletedAt) }} 天
                 </span>
               </td>
               
@@ -199,7 +199,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { createLogger } from '@/utils/logger'
 import {
   recycleBinState,
-  getRecycleBinId,
   initRecycleBinBrowse,
   loadMoreRecycleBinFiles,
   formatDateTime,
@@ -242,13 +241,9 @@ const loadRecycleBin = async () => {
   try {
     loadError.value = null
     
-    // 检查是否有 recycleBinId
-    const recycleBinId = getRecycleBinId()
-    if (!recycleBinId) {
-      logger.error('无法获取 recycleBinId')
-      loadError.value = '无法获取回收站信息，请重新登录'
-      return
-    }
+    // ✅ 回收站浏览接口不需要 recycleBinId 参数
+    // 后端会从 JWT token 中自动获取用户信息并查询对应的回收站
+    logger.info('开始加载回收站...')
     
     // 调用初始化浏览
     const result = await initRecycleBinBrowse(10)
@@ -259,6 +254,12 @@ const loadRecycleBin = async () => {
     } else {
       logger.info('回收站加载成功', { count: files.value.length })
       hasLoaded.value = true
+      
+      // ✅ 第一次加载完成后，再设置 Intersection Observer
+      // 避免 loadMoreTrigger 立即触发导致第二次请求
+      setTimeout(() => {
+        setupIntersectionObserver()
+      }, 100)
     }
   } catch (error) {
     logger.error('加载回收站异常:', error)
@@ -428,6 +429,24 @@ const formatFileSize = (bytes) => {
 }
 
 /**
+ * 计算回收站项目剩余天数
+ * @param {string} deletedAt - 删除时间（ISO 8601 格式）
+ * @returns {number} 剩余天数（最多30天）
+ */
+const calculateDaysRemaining = (deletedAt) => {
+  if (!deletedAt) return 0
+  
+  const deleteTime = new Date(deletedAt).getTime()
+  const expireTime = deleteTime + (30 * 24 * 60 * 60 * 1000) // 30天后过期
+  const now = Date.now()
+  
+  const remainingMs = expireTime - now
+  const remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000))
+  
+  return Math.max(0, remainingDays) // 最少为0
+}
+
+/**
  * 处理搜索操作
  */
 const handleSearch = () => {
@@ -567,10 +586,12 @@ const setupIntersectionObserver = () => {
       isIntersecting: entries[0].isIntersecting,
       isLoading: isLoading.value,
       hasMore: hasMore.value,
-      loadError: loadError.value
+      loadError: loadError.value,
+      hasLoaded: hasLoaded.value  // ✅ 添加 hasLoaded 检查
     })
     
-    if (entries[0].isIntersecting && !isLoading.value && hasMore.value && !loadError.value) {
+    // ✅ 增加 hasLoaded 检查，确保只有在首次加载完成后才允许加载更多
+    if (entries[0].isIntersecting && !isLoading.value && hasMore.value && !loadError.value && hasLoaded.value) {
       logger.info('✅ 开始加载更多回收站文件')
       handleLoadMore()
     } else {
@@ -597,10 +618,8 @@ onMounted(() => {
     loadRecycleBin()
   }
   
-  // 等待DOM更新后设置 Intersection Observer
-  setTimeout(() => {
-    setupIntersectionObserver()
-  }, 100)
+  // ✅ 移除 onMounted 中的 setupIntersectionObserver
+  // 改为在 loadRecycleBin 成功后设置，避免重复请求
   
   // 初始加载恢复进程列表
   fetchRestoreProcesses()
